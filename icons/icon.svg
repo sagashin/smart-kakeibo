@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10B981" />
+      <stop offset="100%" stop-color="#047857" />
+    </linearGradient>
+    <linearGradient id="flameGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#F59E0B" />
+      <stop offset="100%" stop-color="#EF4444" />
+    </linearGradient>
+  </defs>
+  <!-- Background Rounded Rect -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" />
+  
+  <!-- Receipt Outline -->
+  <path d="M128 96 H384 V416 L352 396 L320 416 L288 396 L256 416 L224 396 L192 416 L160 396 L128 416 Z" fill="#FFFFFF" opacity="0.95" />
+  
+  <!-- Receipt Lines -->
+  <rect x="168" y="150" width="176" height="14" rx="7" fill="#CBD5E1" />
+  <rect x="168" y="184" width="120" height="14" rx="7" fill="#E2E8F0" />
+  <rect x="168" y="218" width="140" height="14" rx="7" fill="#E2E8F0" />
+  
+  <!-- Flame Icon representing Calories & Energy -->
+  <g transform="translate(196, 250) scale(0.6)">
+    <path d="M100 0 C100 0 140 50 140 100 C140 160 90 200 90 200 C90 200 170 180 170 110 C170 50 100 0 100 0 Z" fill="url(#flameGrad)" />
+    <path d="M70 40 C70 40 110 90 110 140 C110 190 60 220 60 220 C60 220 130 200 130 140 C130 90 70 40 70 40 Z" fill="#FBBF24" opacity="0.8" />
+  </g>
+</svg>

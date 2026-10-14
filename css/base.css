@@ -1,0 +1,109 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: var(--font-family-body);
+  background: #0B0F19; /* PC閲覧時の背景（ディープダーク） */
+  color: var(--text-main);
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow-x: hidden;
+  line-height: 1.5;
+}
+
+/* スマホ表示コンテナ（モバイルデバイスでは全画面、PCではスマホフレーム） */
+#app-viewport {
+  width: 100%;
+  max-width: 440px;
+  min-height: 100vh;
+  height: 100vh;
+  background-color: var(--bg-app);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.5);
+  transition: max-width var(--transition-normal);
+}
+
+/* PC全画面モード切替 */
+body.full-width-mode #app-viewport {
+  max-width: 900px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+}
+
+/* PC用フレームトグルボタン */
+.frame-toggle-btn {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(10px);
+  color: #FFFFFF;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 8px 14px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  z-index: 9999;
+  transition: all var(--transition-fast);
+}
+
+.frame-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: translateY(-1px);
+}
+
+@media (max-width: 500px) {
+  body {
+    background-color: var(--bg-app);
+  }
+  #app-viewport {
+    max-width: 100%;
+    box-shadow: none;
+    border-radius: 0;
+  }
+  .frame-toggle-btn {
+    display: none;
+  }
+}
+
+/* メインスクロール可能コンテンツ領域 */
+.app-content-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 16px 16px 95px 16px; /* 下部ナビ分の余白 */
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* スクロールバーの非表示・美化 */
+.app-content-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.app-content-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 4px;
+}
+
+/* タイポグラフィ */
+h1, h2, h3, h4, h5 {
+  font-family: var(--font-family-display);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+button, input, select, textarea {
+  font-family: inherit;
+}
