@@ -1,7 +1,7 @@
 {
-  "name": "SmartKakeibo - レシート家計簿＆カロリー管理",
+  "name": "SmartKakeibo - スマートレシート家計簿",
   "short_name": "スマート家計簿",
-  "description": "レシートの写真から支出と摂取カロリー・冷蔵庫在庫を自動記録・分析するスマート家計簿アプリ",
+  "description": "レシートの写真から支出と冷蔵庫在庫を自動記録・分析するスマート家計簿アプリ",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#F8FAFC",

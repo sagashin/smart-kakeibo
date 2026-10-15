@@ -7,9 +7,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="スマート家計簿">
-  <meta name="description" content="レシートの写真から支出とカロリーをAIが自動記録。日別・月別・累計での分析や冷蔵庫ストック管理ができるスマホ最適化家計簿アプリ。">
+  <meta name="description" content="レシートの写真から品目・金額・店舗をAIが自動記録。日別・月別の支出分析や冷蔵庫ストック管理ができるスマホ最適化家計簿アプリ。">
 
-  <title>SmartKakeibo - レシート家計簿＆カロリー管理</title>
+  <title>SmartKakeibo - AIレシート家計簿＆冷蔵庫管理</title>
 
   <!-- PWA Manifest & Favicon -->
   <link rel="manifest" href="./manifest.json">
@@ -44,10 +44,10 @@
   <script src="https://unpkg.com/lucide@latest"></script>
 
   <!-- CSS Stylesheets -->
-  <link rel="stylesheet" href="./css/variables.css?v=20261015_07">
-  <link rel="stylesheet" href="./css/base.css?v=20261015_07">
-  <link rel="stylesheet" href="./css/components.css?v=20261015_07">
-  <link rel="stylesheet" href="./css/screens.css?v=20261015_07">
+  <link rel="stylesheet" href="./css/variables.css?v=20261015_08">
+  <link rel="stylesheet" href="./css/base.css?v=20261015_08">
+  <link rel="stylesheet" href="./css/components.css?v=20261015_08">
+  <link rel="stylesheet" href="./css/screens.css?v=20261015_08">
 </head>
 <body>
 
@@ -70,10 +70,10 @@
         <!-- ヘッダー -->
         <header class="home-header">
           <div class="home-header-top">
-            <span class="greeting-text">Smart Kakeibo & Calorie</span>
-            <span class="app-title-badge"><i data-lucide="sparkles"></i> AI連動</span>
+            <span class="greeting-text">Smart Kakeibo</span>
+            <span class="app-title-badge"><i data-lucide="sparkles"></i> AI自動仕分け</span>
           </div>
-          <h1 style="font-size: 20px; font-weight: 800;">今月の収支とカロリー</h1>
+          <h1 style="font-size: 20px; font-weight: 800;">今月の家計サマリー</h1>
         </header>
 
         <!-- 冷蔵庫アラートバナー (賞味期限が近い食品がある場合) -->
@@ -90,7 +90,7 @@
             <div id="home-budget-bar" class="budget-bar-fill" style="width: 0%;"></div>
           </div>
           <div class="budget-footer">
-            <span>予算目標: ¥75,000</span>
+            <span id="home-budget-target-label">予算目標: ¥75,000</span>
             <span id="home-discount-total-wrap">
               <i data-lucide="tag" style="width: 12px; height: 12px; display: inline;"></i> 
               節約額: <strong id="home-discount-total" style="color: #EF4444;">¥0</strong>
@@ -98,7 +98,7 @@
           </div>
         </div>
 
-        <!-- 支出 & カロリーのツイン統計カード -->
+        <!-- 支出 & 買い物回数のツイン統計カード -->
         <div class="twin-stat-grid">
           <div class="stat-box expense-theme">
             <div class="stat-label">
@@ -106,29 +106,34 @@
               <span>今月の支出</span>
             </div>
             <div id="home-month-spend-sub" class="stat-value">¥0</div>
-            <div class="stat-sub">
+            <div class="stat-sub" id="home-spend-sub-label">
               <i data-lucide="trending-up" style="width: 12px; height: 12px;"></i>
               <span>目標枠内</span>
             </div>
           </div>
 
-          <div class="stat-box calorie-theme">
+          <div class="stat-box shopping-theme">
             <div class="stat-label">
-              <i data-lucide="flame"></i>
-              <span>購入カロリー</span>
+              <i data-lucide="shopping-bag"></i>
+              <span>買い物回数</span>
             </div>
-            <div id="home-total-calories" class="stat-value">0 kcal</div>
-            <div id="home-avg-calories" class="stat-sub">日平均: 0 kcal</div>
+            <div id="home-shopping-count" class="stat-value">0 回</div>
+            <div id="home-avg-spend-per-shop" class="stat-sub">1回平均: ¥0</div>
           </div>
         </div>
 
-        <!-- カロパカード (100円あたりのカロリー指標) -->
-        <div class="cal-efficiency-box">
-          <div class="cal-eff-left">
-            <strong>カロパ (100円あたりカロリー)</strong>
-            <span>エネルギーコスパと健康バランスの指標</span>
+        <!-- 今月の主な支出カテゴリ (TOP3) カード -->
+        <div class="top-categories-card">
+          <div class="top-categories-header">
+            <div class="top-cat-title">
+              <i data-lucide="pie-chart" style="width: 15px; height: 15px; color: var(--color-primary);"></i>
+              <strong>主な支出カテゴリ</strong>
+            </div>
+            <span class="top-cat-period">今月</span>
           </div>
-          <div id="home-cal-per-100" class="cal-eff-value">0 kcal</div>
+          <div id="home-top-categories-list" class="top-categories-list">
+            <!-- 動的挿入 -->
+          </div>
         </div>
 
         <!-- クイックアクションボタン (撮影 / 手入力) -->
@@ -139,7 +144,7 @@
             </div>
             <div class="action-card-text">
               <strong>レシート撮影</strong>
-              <span>AIが品目＆カロリー解析</span>
+              <span>AIが品目＆金額を自動解析</span>
             </div>
           </button>
 
@@ -149,14 +154,14 @@
             </div>
             <div class="action-card-text">
               <strong>手入力</strong>
-              <span>カロリー自動サジェスト</span>
+              <span>サクサクかんたん記録</span>
             </div>
           </button>
         </div>
 
         <!-- 最近の履歴 -->
         <div class="section-header">
-          <h2 class="section-title"><i data-lucide="clock"></i> 最近の支出とカロリー</h2>
+          <h2 class="section-title"><i data-lucide="clock"></i> 最近の支出</h2>
           <button class="section-more-link" onclick="window.appUI.switchTab('history')">すべて見る</button>
         </div>
         <div id="home-recent-list"></div>
@@ -169,7 +174,7 @@
         <header style="margin-bottom: 16px;">
           <h1 style="font-size: 20px; font-weight: 800;">レシート自動スキャン</h1>
           <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
-            写真を撮るだけで、店舗名・品目・金額・推定カロリーを自動抽出
+            写真を撮るだけで、店舗名・品目・金額・カテゴリをAIが自動抽出
           </p>
         </header>
 
@@ -180,7 +185,7 @@
           <h3>レシートの写真を撮る</h3>
           <p>
             折れ曲がりや影があってもOK。<br>
-            食品を判別してカロリーも自動計算します。
+            品目ごとの金額や割引を自動で仕分けします。
           </p>
 
           <div class="scan-options-container">
@@ -199,11 +204,11 @@
 
         <!-- 特徴説明 -->
         <div class="card">
-          <h4 style="font-size: 13px; font-weight: 700; margin-bottom: 8px;">🌟 本アプリ独自の強み</h4>
+          <h4 style="font-size: 13px; font-weight: 700; margin-bottom: 8px;">🌟 本アプリの便利機能</h4>
           <ul style="font-size: 12px; color: var(--text-secondary); line-height: 1.8; padding-left: 18px;">
-            <li><strong>食品のカロリー自動推定:</strong> 買った食材の推定kcalを自動計算し、日別・月別で健康も管理。</li>
-            <li><strong>冷蔵庫ストック連動:</strong> 買った食材が自動で冷蔵庫リストに追加され、賞味期限切れを予防。</li>
-            <li><strong>値引き・セール自動認識:</strong> 見切り品やセールの節約額を自動カウント。</li>
+            <li><strong>AI高精度レシート読み取り:</strong> 店舗名・購入日・品目・小計・税込金額を瞬時に自動仕分け。</li>
+            <li><strong>冷蔵庫ストック連動:</strong> 買った食品が自動で冷蔵庫リストに追加され、賞味期限切れを予防。</li>
+            <li><strong>値引き・セール自動認識:</strong> 見切り品やタイムセールの節約額を自動カウント。</li>
           </ul>
         </div>
       </section>
@@ -212,11 +217,11 @@
       <input type="file" id="receipt-file-input" accept="image/*" capture="environment" style="display: none;">
 
       <!-- ==========================================
-           3. 分析 & カロリー画面 (screen-stats)
+           3. 分析画面 (screen-stats)
            ========================================== -->
       <section id="screen-stats" class="screen-view">
         <header style="margin-bottom: 12px;">
-          <h1 style="font-size: 20px; font-weight: 800;">カロリー &amp; 支出分析</h1>
+          <h1 style="font-size: 20px; font-weight: 800;">支出・家計分析</h1>
           <p id="stats-period-title" style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
             集計データ
           </p>
@@ -236,40 +241,42 @@
             <div id="stat-total-expense" class="stat-value">¥0</div>
             <div id="stat-record-count" class="stat-sub">0 件の記録</div>
           </div>
-          <div class="stat-box calorie-theme">
-            <div class="stat-label"><i data-lucide="flame"></i> カロリー合計</div>
-            <div id="stat-total-calorie" class="stat-value">0 kcal</div>
-            <div id="stat-avg-calorie" class="stat-sub">0 kcal/日</div>
+          <div class="stat-box shopping-theme">
+            <div class="stat-label"><i data-lucide="receipt"></i> 1回あたり平均</div>
+            <div id="stat-avg-expense" class="stat-value">¥0</div>
+            <div id="stat-discount-total" class="stat-sub">累計節約: ¥0</div>
           </div>
         </div>
 
-        <!-- 支出 & カロリーのタイムライングラフ -->
+        <!-- 支出タイムライン推移グラフ -->
         <div class="chart-container-card">
           <div class="section-title" style="margin-bottom: 10px;">
-            <i data-lucide="bar-chart-2"></i> 支出(¥) &amp; カロリー(kcal) 推移
+            <i data-lucide="bar-chart-2"></i> 支出推移 (¥)
           </div>
           <div class="chart-wrapper">
             <canvas id="timeline-chart"></canvas>
           </div>
         </div>
 
-        <!-- 食品カロリーの内訳グラフ -->
-        <div class="chart-container-card">
-          <div class="section-title" style="margin-bottom: 8px;">
-            <i data-lucide="pie-chart"></i> カロリーの食品別グループ
-          </div>
-          <div class="doughnut-wrapper">
-            <canvas id="calorie-breakdown-chart"></canvas>
-          </div>
-        </div>
-
         <!-- 支出カテゴリ別グラフ -->
         <div class="chart-container-card">
           <div class="section-title" style="margin-bottom: 8px;">
-            <i data-lucide="pie-chart"></i> 支出カテゴリ別内訳
+            <i data-lucide="pie-chart"></i> カテゴリ別支出内訳
           </div>
           <div class="doughnut-wrapper">
             <canvas id="expense-breakdown-chart"></canvas>
+          </div>
+          <!-- カテゴリ別支出金額リスト -->
+          <div id="stats-category-list" class="stats-category-list" style="margin-top: 14px;"></div>
+        </div>
+
+        <!-- よく利用する店舗ランキング -->
+        <div class="card" id="stats-store-ranking-card">
+          <div class="section-title" style="margin-bottom: 10px;">
+            <i data-lucide="store"></i> 利用店舗ランキング
+          </div>
+          <div id="stats-store-ranking-list" class="stats-store-list">
+            <!-- 動的挿入 -->
           </div>
         </div>
       </section>
@@ -337,10 +344,6 @@
             <label for="cfg-budget">月間支出予算 (円)</label>
             <input type="number" id="cfg-budget" class="form-control" value="75000">
           </div>
-          <div class="form-group">
-            <label for="cfg-cal-target">1日の目標カロリー上限 (kcal)</label>
-            <input type="number" id="cfg-cal-target" class="form-control" value="2200">
-          </div>
 
           <h4 style="font-size: 13px; font-weight: 700; margin: 16px 0 12px 0;">ストレージ容量・データ設定</h4>
           <div class="form-group" style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;">
@@ -349,7 +352,7 @@
                 レシート原本の写真も保存する
               </label>
               <small style="font-size: 11px; color: var(--text-muted); display: block; line-height: 1.4;">
-                <strong>OFF（推奨・容量節約）</strong>: AI認識後に写真は自動破棄し、品目・金額・カロリーデータのみ保存します。何千件記録しても容量を一切圧迫しません。
+                <strong>OFF（推奨・容量節約）</strong>: AI認識後に写真は自動破棄し、品目・金額・カテゴリデータのみ保存します。何千件記録しても容量を一切圧迫しません。
               </small>
             </div>
             <input type="checkbox" id="cfg-save-photo" style="width: 20px; height: 20px; margin-top: 2px; cursor: pointer;">
@@ -388,8 +391,8 @@
       </button>
 
       <button class="nav-item" data-tab="stats" onclick="window.appUI && window.appUI.switchTab('stats')">
-        <i data-lucide="activity"></i>
-        <span>カロリー分析</span>
+        <i data-lucide="pie-chart"></i>
+        <span>支出分析</span>
       </button>
 
       <!-- 中央の特大スキャンボタン -->
@@ -427,7 +430,7 @@
       <div class="modal-body">
         <div class="draft-summary-bar" id="draft-summary-badge">
           <span class="badge-total-price">合計: ¥0</span>
-          <span class="badge-total-cal"><i data-lucide="flame"></i> 0 kcal</span>
+          <span class="badge-item-count" id="draft-item-count"><i data-lucide="shopping-cart"></i> 0 品</span>
         </div>
 
         <!-- 撮影したレシート写真のプレビュー表示 -->
@@ -453,7 +456,7 @@
         </div>
 
         <div class="section-title" style="margin-top: 14px;">
-          <span>品目 &amp; 推定カロリー一覧</span>
+          <span>品目 &amp; 金額一覧</span>
           <small style="font-size: 11px; color: var(--text-muted); font-weight: normal;">(タップして直接修正可能)</small>
         </div>
 
@@ -539,7 +542,7 @@
         </div>
 
         <div class="section-header" style="margin: 10px 0 6px 0;">
-          <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">品目・食材とカロリー</label>
+          <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">品目一覧</label>
           <button type="button" id="manual-add-item-btn" class="btn-subtle" style="font-size: 11px; padding: 4px 8px; border-radius: 4px;">
             <i data-lucide="plus" style="width: 12px; height: 12px; display: inline;"></i> 品目を追加
           </button>
@@ -549,7 +552,7 @@
 
         <div class="form-group" style="margin-top: 10px;">
           <label>メモ</label>
-          <input type="text" id="manual-memo" class="form-control" placeholder="例: ランチ、セールで安かった等">
+          <input type="text" id="manual-memo" class="form-control" placeholder="例: ランチ、特売日など">
         </div>
 
         <div style="margin-top: 10px; display: flex; align-items: center; gap: 8px;">
@@ -580,10 +583,10 @@
       <form id="edit-tx-form" class="modal-body" style="overflow-y: auto; flex: 1; padding: 16px;">
         <input type="hidden" id="edit-tx-id">
 
-        <!-- 合計金額 & カロリー サマリーバッジ -->
+        <!-- 合計金額 & 品目数 サマリーバッジ -->
         <div class="draft-summary-bar" id="edit-tx-summary-badge" style="margin-bottom: 12px;">
           <span class="badge-total-price" id="edit-tx-summary-price">合計: ¥0</span>
-          <span class="badge-total-cal" id="edit-tx-summary-cal"><i data-lucide="flame"></i> 0 kcal</span>
+          <span class="badge-item-count" id="edit-tx-summary-count"><i data-lucide="shopping-cart"></i> 0 品</span>
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
@@ -603,7 +606,7 @@
         </div>
 
         <div class="section-header" style="margin: 14px 0 8px 0; display: flex; justify-content: space-between; align-items: center;">
-          <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary); margin: 0;">品目・食材とカロリー</label>
+          <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary); margin: 0;">品目一覧</label>
           <button type="button" id="edit-tx-add-item-btn" class="btn-subtle" style="font-size: 11px; padding: 4px 8px; border-radius: 4px;">
             <i data-lucide="plus" style="width: 12px; height: 12px; display: inline;"></i> 品目を追加
           </button>
@@ -613,7 +616,7 @@
 
         <div class="form-group" style="margin-top: 12px;">
           <label>メモ</label>
-          <input type="text" id="edit-tx-memo" class="form-control" placeholder="例: ランチ、セールで安かった等">
+          <input type="text" id="edit-tx-memo" class="form-control" placeholder="例: ランチ、特売日など">
         </div>
 
         <div class="modal-footer" style="padding: 14px 0 0 0; background: none;">
@@ -633,13 +636,13 @@
       <i data-lucide="receipt" style="width: 64px; height: 64px; opacity: 0.3; color: #10B981;"></i>
     </div>
     <h3 style="font-size: 16px; margin-bottom: 6px;">AIがレシートを解析中...</h3>
-    <p class="scanner-hint">品目・金額・食品のカロリーを抽出しています</p>
+    <p class="scanner-hint">店舗名・品目・金額・カテゴリを抽出しています</p>
   </div>
 
   <!-- トースト通知 -->
   <div id="toast-notification" class="toast">記録を保存しました！</div>
 
   <!-- Scripts: self-contained bundle for seamless local file & server execution -->
-  <script src="./js/bundle.js?v=20261015_07"></script>
+  <script src="./js/bundle.js?v=20261015_08"></script>
 </body>
 </html>

@@ -4,7 +4,6 @@
 import { store, ReceiptImageDB } from './store.js';
 import { parseReceiptWithGemini, simulateReceiptScan, DEMO_RECEIPTS } from './gemini.js';
 import { renderCharts } from './charts.js';
-import { estimateFoodCalories, FOOD_DATABASE } from './calorie-db.js';
 
 export class AppUI {
   constructor() {
@@ -126,12 +125,10 @@ export class AppUI {
         e.preventDefault();
         const apiKey = document.getElementById('cfg-api-key').value.trim();
         const budget = Number(document.getElementById('cfg-budget').value) || 75000;
-        const calTarget = Number(document.getElementById('cfg-cal-target').value) || 2200;
         const savePhoto = document.getElementById('cfg-save-photo') ? document.getElementById('cfg-save-photo').checked : false;
         store.saveSettings({
           geminiApiKey: apiKey,
           monthlyBudget: budget,
-          dailyCalorieTarget: calTarget,
           saveReceiptPhotos: savePhoto
         });
         this.showToast('設定を保存しました✨');
@@ -208,8 +205,12 @@ export class AppUI {
     const monthSpendSubEl = document.getElementById('home-month-spend-sub');
     const budgetRemainEl = document.getElementById('home-budget-remaining');
     const budgetBarEl = document.getElementById('home-budget-bar');
+    const budgetTargetLabel = document.getElementById('home-budget-target-label');
+
     if (monthSpendEl) monthSpendEl.textContent = `¥${stats.totalExpense.toLocaleString()}`;
     if (monthSpendSubEl) monthSpendSubEl.textContent = `¥${stats.totalExpense.toLocaleString()}`;
+    if (budgetTargetLabel) budgetTargetLabel.textContent = `予算目標: ¥${budget.toLocaleString()}`;
+
     if (budgetRemainEl) {
       budgetRemainEl.textContent = remaining >= 0 ? `残り ¥${remaining.toLocaleString()}` : `超過 ¥${Math.abs(remaining).toLocaleString()}`;
       budgetRemainEl.style.color = remaining >= 0 ? '#10B981' : '#EF4444';
@@ -219,13 +220,42 @@ export class AppUI {
       budgetBarEl.style.backgroundColor = progress > 90 ? '#EF4444' : progress > 75 ? '#F59E0B' : '#10B981';
     }
 
-    // カロリーカード
-    const totalCalEl = document.getElementById('home-total-calories');
-    const avgCalEl = document.getElementById('home-avg-calories');
-    const calPer100El = document.getElementById('home-cal-per-100');
-    if (totalCalEl) totalCalEl.textContent = `${stats.totalCalories.toLocaleString()} kcal`;
-    if (avgCalEl) avgCalEl.textContent = `日平均: ${stats.averageDailyCalories.toLocaleString()} kcal`;
-    if (calPer100El) calPer100El.textContent = `${stats.calPer100Yen} kcal / 100円`;
+    // 買い物回数 & 1回あたり平均
+    const shopCountEl = document.getElementById('home-shopping-count');
+    const avgShopEl = document.getElementById('home-avg-spend-per-shop');
+    if (shopCountEl) shopCountEl.textContent = `${stats.transactionCount} 回`;
+    if (avgShopEl) avgShopEl.textContent = `1回平均: ¥${stats.avgSpendPerShop.toLocaleString()}`;
+
+    // 主な支出カテゴリ TOP3
+    const topCatListEl = document.getElementById('home-top-categories-list');
+    if (topCatListEl) {
+      if (!stats.topCategories || stats.topCategories.length === 0) {
+        topCatListEl.innerHTML = `<div style="font-size: 11px; color: var(--text-muted); text-align: center; padding: 6px;">今月の支出データがありません</div>`;
+      } else {
+        const catColors = {
+          '主食': '#10B981', 'お肉・魚': '#F43F5E', '野菜・果物': '#84CC16',
+          '乳製品・飲料': '#06B6D4', '惣菜・お弁当': '#F59E0B', 'お菓子・スイーツ': '#EC4899',
+          '日用品': '#8B5CF6', '外食': '#EF4444', 'その他': '#94A3B8'
+        };
+        topCatListEl.innerHTML = stats.topCategories.map(cat => {
+          const color = catColors[cat.name] || '#94A3B8';
+          return `
+            <div class="top-cat-item">
+              <div class="top-cat-meta">
+                <span class="top-cat-name">
+                  <span class="top-cat-dot" style="background-color: ${color};"></span>
+                  ${cat.name}
+                </span>
+                <span class="top-cat-amount">¥${cat.amount.toLocaleString()} <small style="font-size: 10px; color: var(--text-muted); font-weight: normal;">(${cat.pct}%)</small></span>
+              </div>
+              <div class="top-cat-bar-bg">
+                <div class="top-cat-bar-fill" style="width: ${cat.pct}%; background-color: ${color};"></div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+    }
 
     // 節約スコア
     const discountEl = document.getElementById('home-discount-total');
@@ -263,7 +293,7 @@ export class AppUI {
     }
   }
 
-  // --- 統計 & カロリー画面描画 ---
+  // --- 支出分析画面描画 ---
   renderStats() {
     const stats = store.getStats(this.currentPeriod);
 
@@ -279,16 +309,16 @@ export class AppUI {
       }
     }
 
-    // 支出とカロリーのハイライト
+    // 支出とハイライト
     const statExpenseEl = document.getElementById('stat-total-expense');
-    const statCalorieEl = document.getElementById('stat-total-calorie');
-    const statAvgCalEl = document.getElementById('stat-avg-calorie');
+    const statAvgExpenseEl = document.getElementById('stat-avg-expense');
+    const statDiscountEl = document.getElementById('stat-discount-total');
     const statCountEl = document.getElementById('stat-record-count');
 
     if (statExpenseEl) statExpenseEl.textContent = `¥${stats.totalExpense.toLocaleString()}`;
-    if (statCalorieEl) statCalorieEl.textContent = `${stats.totalCalories.toLocaleString()} kcal`;
-    if (statAvgCalEl) statAvgCalEl.textContent = `${stats.averageDailyCalories.toLocaleString()} kcal/日`;
-    if (statCountEl) statCountEl.textContent = `${stats.transactionCount} 件`;
+    if (statAvgExpenseEl) statAvgExpenseEl.textContent = `¥${stats.avgSpendPerShop.toLocaleString()}`;
+    if (statDiscountEl) statDiscountEl.textContent = `累計節約: ¥${stats.totalDiscount.toLocaleString()}`;
+    if (statCountEl) statCountEl.textContent = `${stats.transactionCount} 件の記録`;
 
     // グラフ描画
     renderCharts(stats);
@@ -338,7 +368,6 @@ export class AppUI {
           <div class="fridge-info" onclick="window.appUI.toggleFridge('${item.id}')">
             <div class="fridge-name">${this.escapeHtml(item.name)}</div>
             <div class="fridge-meta">
-              <span class="fridge-cal">${item.calories ? item.calories + ' kcal' : '食品'}</span>
               <span class="fridge-cat">${item.category}</span>
             </div>
           </div>
@@ -380,7 +409,6 @@ export class AppUI {
 
   createTransactionCardHtml(tx, showDelete = false) {
     const dateFormatted = tx.date.split('-').slice(1).join('/');
-    const foodItems = (tx.items || []).filter(i => i.isFood);
     const hasDiscount = tx.totalDiscount > 0;
     const items = tx.items || [];
 
@@ -405,8 +433,8 @@ export class AppUI {
         </div>
 
         <div class="tx-badges">
-          <span class="pill-badge cal-badge">
-            <i data-lucide="flame"></i> ${tx.totalCalories.toLocaleString()} kcal
+          <span class="pill-badge count-badge">
+            <i data-lucide="shopping-cart"></i> ${items.length}品
           </span>
           <span class="pill-badge cat-badge">${tx.category}</span>
           ${hasDiscount ? `
@@ -425,7 +453,6 @@ export class AppUI {
           ${items.map((i, idx) => `
             <span class="tx-item-chip ${idx >= 3 ? 'item-hidden' : ''}" style="${idx >= 3 ? 'display: none;' : ''}" onclick="event.stopPropagation(); window.appUI.openEditTxModal('${tx.id}')" title="タップして品目を編集">
               ${this.escapeHtml(i.name)}
-              ${i.isFood && i.calories ? `<small>(${i.calories}c)</small>` : ''}
               <span class="chip-delete-btn" onclick="event.stopPropagation(); window.appUI.deleteTxItem('${tx.id}', '${i.id}', '${this.escapeHtml(i.name)}')" title="この品目を削除">×</span>
             </span>
           `).join('')}
@@ -478,12 +505,10 @@ export class AppUI {
   renderSettings() {
     const apiKeyInput = document.getElementById('cfg-api-key');
     const budgetInput = document.getElementById('cfg-budget');
-    const calTargetInput = document.getElementById('cfg-cal-target');
     const savePhotoInput = document.getElementById('cfg-save-photo');
 
     if (apiKeyInput) apiKeyInput.value = store.settings.geminiApiKey || '';
     if (budgetInput) budgetInput.value = store.settings.monthlyBudget || 75000;
-    if (calTargetInput) calTargetInput.value = store.settings.dailyCalorieTarget || 2200;
     if (savePhotoInput) savePhotoInput.checked = !!store.settings.saveReceiptPhotos;
   }
 
@@ -582,13 +607,10 @@ export class AppUI {
     if (!container || !this.scannedDraft) return;
 
     let totalAmount = 0;
-    let totalCalories = 0;
 
     container.innerHTML = this.scannedDraft.items.map((item, idx) => {
       const itemPrice = (item.price || 0) * (item.quantity || 1);
-      const itemCal = (item.calories || 0) * (item.quantity || 1);
       totalAmount += itemPrice;
-      totalCalories += itemCal;
 
       return `
         <div class="draft-item-row" data-index="${idx}">
@@ -602,10 +624,6 @@ export class AppUI {
             <div class="draft-field">
               <label>金額(円)</label>
               <input type="number" class="input-flat-num item-price" value="${item.price}" onchange="window.appUI.updateDraftItem(${idx}, 'price', this.value)">
-            </div>
-            <div class="draft-field">
-              <label>カロリー(kcal)</label>
-              <input type="number" class="input-flat-num item-cal" value="${item.calories}" onchange="window.appUI.updateDraftItem(${idx}, 'calories', this.value)">
             </div>
             <div class="draft-field">
               <label>種別</label>
@@ -629,13 +647,12 @@ export class AppUI {
     const totalDiscount = Number(document.getElementById('draft-discount')?.value) || 0;
     const finalAmount = Math.max(0, totalAmount - totalDiscount);
     this.scannedDraft.totalAmount = finalAmount;
-    this.scannedDraft.totalCalories = totalCalories;
 
     const summaryEl = document.getElementById('draft-summary-badge');
     if (summaryEl) {
       summaryEl.innerHTML = `
         <span class="badge-total-price">合計: ¥${finalAmount.toLocaleString()}</span>
-        <span class="badge-total-cal"><i data-lucide="flame"></i> ${totalCalories.toLocaleString()} kcal</span>
+        <span class="badge-item-count" id="draft-item-count"><i data-lucide="shopping-cart"></i> ${this.scannedDraft.items.length} 品目</span>
       `;
     }
     if (window.lucide) window.lucide.createIcons();
@@ -645,19 +662,10 @@ export class AppUI {
     if (!this.scannedDraft || !this.scannedDraft.items[idx]) return;
     const item = this.scannedDraft.items[idx];
 
-    if (field === 'price' || field === 'calories') {
+    if (field === 'price') {
       item[field] = Number(value) || 0;
     } else if (field === 'name') {
       item.name = value;
-      // カロリーが0の場合、商品名から再推定を試みる
-      if (item.calories === 0) {
-        const est = estimateFoodCalories(value);
-        if (est.isFood) {
-          item.calories = est.calories;
-          item.category = est.category;
-          item.isFood = true;
-        }
-      }
     } else if (field === 'category') {
       item.category = value;
       item.isFood = value !== '日用品' && value !== 'その他';
@@ -693,7 +701,7 @@ export class AppUI {
     store.addTransaction(this.scannedDraft, addToFridge);
 
     this.closeScanModal();
-    this.showToast('家計簿に記録しました！カロリーも反映されました🔥');
+    this.showToast('家計簿に記録しました！支出サマリーに反映されました✨');
     this.switchTab('home');
   }
 
@@ -725,7 +733,7 @@ export class AppUI {
     if (window.lucide) window.lucide.createIcons();
   }
 
-  addManualItemRow(name = '', price = '', calories = '', category = '主食') {
+  addManualItemRow(name = '', price = '', category = '主食') {
     const container = document.getElementById('manual-items-container');
     if (!container) return;
 
@@ -735,7 +743,7 @@ export class AppUI {
     div.id = rowId;
     div.innerHTML = `
       <div class="manual-row-top">
-        <input type="text" class="input-food-name" placeholder="食品名 (例: おにぎり, 牛乳)" value="${this.escapeHtml(name)}">
+        <input type="text" class="input-food-name" placeholder="商品名 (例: 牛乳, パン, 洗剤)" value="${this.escapeHtml(name)}">
         <button type="button" class="btn-icon-subtle text-danger" onclick="document.getElementById('${rowId}').remove()" title="この品目を削除">
           <i data-lucide="minus-circle"></i>
         </button>
@@ -744,10 +752,6 @@ export class AppUI {
         <div class="manual-field">
           <span class="manual-field-label">金額(円)</span>
           <input type="number" class="input-food-price" placeholder="¥ 0" value="${price}">
-        </div>
-        <div class="manual-field">
-          <span class="manual-field-label">カロリー</span>
-          <input type="number" class="input-food-cal" placeholder="kcal" value="${calories}">
         </div>
         <div class="manual-field">
           <span class="manual-field-label">種別</span>
@@ -763,34 +767,7 @@ export class AppUI {
           </select>
         </div>
       </div>
-      <div class="calorie-suggestion" style="display: none;"></div>
     `;
-
-    // 食品名入力時の自動サジェスト＆カロリー補完
-    const nameInput = div.querySelector('.input-food-name');
-    const calInput = div.querySelector('.input-food-cal');
-    const catSelect = div.querySelector('.input-food-cat');
-    const suggBox = div.querySelector('.calorie-suggestion');
-
-    nameInput.addEventListener('input', () => {
-      const query = nameInput.value.trim();
-      if (!query) {
-        suggBox.style.display = 'none';
-        return;
-      }
-      const est = estimateFoodCalories(query);
-      if (est.isFood) {
-        suggBox.style.display = 'block';
-        suggBox.innerHTML = `💡 推定: <strong>${est.calories} kcal</strong> (${est.unit || est.category}) <button type="button" class="btn-apply-sugg">適用</button>`;
-        suggBox.querySelector('.btn-apply-sugg').onclick = () => {
-          calInput.value = est.calories;
-          catSelect.value = est.category;
-          suggBox.style.display = 'none';
-        };
-      } else {
-        suggBox.style.display = 'none';
-      }
-    });
 
     container.appendChild(div);
     if (window.lucide) window.lucide.createIcons();
@@ -811,7 +788,6 @@ export class AppUI {
     rows.forEach(row => {
       const name = row.querySelector('.input-food-name').value.trim();
       const price = Number(row.querySelector('.input-food-price').value) || 0;
-      const calories = Number(row.querySelector('.input-food-cal').value) || 0;
       const category = row.querySelector('.input-food-cat').value;
 
       if (name || price > 0) {
@@ -819,11 +795,9 @@ export class AppUI {
         items.push({
           name: name || '支出品目',
           price,
-          quantity: 1,
           category,
           isFood,
-          calories,
-          shelfLifeDays: isFood ? 4 : null
+          shelfLifeDays: 3
         });
       }
     });
@@ -846,7 +820,6 @@ export class AppUI {
         quantity: 1,
         category: '食費',
         isFood: true,
-        calories: 300,
         shelfLifeDays: 3
       });
     }
@@ -1005,10 +978,10 @@ export class AppUI {
 
     if (tx.items && tx.items.length > 0) {
       tx.items.forEach(item => {
-        this.addEditTxItemRow(item.name, item.price, item.calories, item.category);
+        this.addEditTxItemRow(item.name, item.price, item.category);
       });
     } else {
-      this.addEditTxItemRow('', tx.totalAmount, tx.totalCalories, tx.category);
+      this.addEditTxItemRow('', tx.totalAmount, tx.category);
     }
 
     this.updateEditTxSummary();
@@ -1016,7 +989,7 @@ export class AppUI {
     if (window.lucide) window.lucide.createIcons();
   }
 
-  addEditTxItemRow(name = '', price = '', calories = '', category = '主食') {
+  addEditTxItemRow(name = '', price = '', category = '主食') {
     const container = document.getElementById('edit-tx-items-container');
     if (!container) return;
 
@@ -1026,7 +999,7 @@ export class AppUI {
     div.id = rowId;
     div.innerHTML = `
       <div class="manual-row-top">
-        <input type="text" class="input-food-name" placeholder="食品名 (例: おにぎり, 牛乳)" value="${this.escapeHtml(name)}">
+        <input type="text" class="input-food-name" placeholder="商品名 (例: 牛乳, パン, 洗剤)" value="${this.escapeHtml(name)}">
         <button type="button" class="btn-icon-subtle text-danger" onclick="document.getElementById('${rowId}').remove(); window.appUI.updateEditTxSummary();" title="この品目を削除">
           <i data-lucide="minus-circle"></i>
         </button>
@@ -1035,10 +1008,6 @@ export class AppUI {
         <div class="manual-field">
           <span class="manual-field-label">金額(円)</span>
           <input type="number" class="input-food-price" placeholder="¥ 0" value="${price}">
-        </div>
-        <div class="manual-field">
-          <span class="manual-field-label">カロリー</span>
-          <input type="number" class="input-food-cal" placeholder="kcal" value="${calories}">
         </div>
         <div class="manual-field">
           <span class="manual-field-label">種別</span>
@@ -1057,24 +1026,8 @@ export class AppUI {
     `;
     container.appendChild(div);
 
-    const nameInput = div.querySelector('.input-food-name');
     const priceInput = div.querySelector('.input-food-price');
-    const calInput = div.querySelector('.input-food-cal');
-    const catSelect = div.querySelector('.input-food-cat');
-
-    nameInput.addEventListener('blur', () => {
-      if (!calInput.value && nameInput.value) {
-        const est = estimateFoodCalories(nameInput.value);
-        if (est.isFood) {
-          calInput.value = est.calories;
-          catSelect.value = est.category;
-          this.updateEditTxSummary();
-        }
-      }
-    });
-
     priceInput.addEventListener('input', () => this.updateEditTxSummary());
-    calInput.addEventListener('input', () => this.updateEditTxSummary());
 
     if (window.lucide) window.lucide.createIcons();
     this.updateEditTxSummary();
@@ -1086,21 +1039,19 @@ export class AppUI {
 
     const discount = Number(document.getElementById('edit-tx-discount')?.value) || 0;
     let totalAmount = 0;
-    let totalCalories = 0;
+    const rows = container.querySelectorAll('.manual-item-row');
 
-    container.querySelectorAll('.manual-item-row').forEach(row => {
+    rows.forEach(row => {
       const price = Number(row.querySelector('.input-food-price')?.value) || 0;
-      const cal = Number(row.querySelector('.input-food-cal')?.value) || 0;
       totalAmount += price;
-      totalCalories += cal;
     });
 
     const finalAmount = Math.max(0, totalAmount - discount);
     const priceEl = document.getElementById('edit-tx-summary-price');
-    const calEl = document.getElementById('edit-tx-summary-cal');
+    const countEl = document.getElementById('edit-tx-summary-count');
 
     if (priceEl) priceEl.textContent = `合計: ¥${finalAmount.toLocaleString()}`;
-    if (calEl) calEl.innerHTML = `<i data-lucide="flame"></i> ${totalCalories.toLocaleString()} kcal`;
+    if (countEl) countEl.innerHTML = `<i data-lucide="shopping-cart"></i> ${rows.length} 品`;
     if (window.lucide) window.lucide.createIcons();
   }
 
@@ -1118,14 +1069,12 @@ export class AppUI {
     document.querySelectorAll('#edit-tx-items-container .manual-item-row').forEach(row => {
       const name = row.querySelector('.input-food-name').value.trim();
       const price = Number(row.querySelector('.input-food-price').value) || 0;
-      const calories = Number(row.querySelector('.input-food-cal').value) || 0;
       const category = row.querySelector('.input-food-cat').value;
 
       if (name || price > 0) {
         items.push({
           name: name || '品目',
           price,
-          calories,
           category,
           isFood: category !== '日用品' && category !== 'その他'
         });

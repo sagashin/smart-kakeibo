@@ -8,148 +8,87 @@
   'use strict';
 
   /* ==========================================================================
-     1. 食品データベース & カロリー推定モジュール
+     1. 食品データベース & 賞味期限・カテゴリ判定モジュール
      ========================================================================== */
   const FOOD_DATABASE = [
     // 主食・パン・麺
-    { name: 'おにぎり', calories: 180, unit: '1個', category: '主食', shelfLifeDays: 1 },
-    { name: '白米', calories: 240, unit: '1膳(150g)', category: '主食', shelfLifeDays: 2 },
-    { name: '食パン', calories: 160, unit: '1枚(6枚切)', category: '主食', shelfLifeDays: 4 },
-    { name: '菓子パン', calories: 350, unit: '1個', category: '主食', shelfLifeDays: 3 },
-    { name: 'クロワッサン', calories: 200, unit: '1個', category: '主食', shelfLifeDays: 3 },
-    { name: 'うどん', calories: 270, unit: '1玉', category: '主食', shelfLifeDays: 5 },
-    { name: 'そば', calories: 260, unit: '1玉', category: '主食', shelfLifeDays: 5 },
-    { name: 'パスタ・スパゲッティ', calories: 370, unit: '1食(100g乾)', category: '主食', shelfLifeDays: 365 },
-    { name: 'カップ麺・ラーメン', calories: 430, unit: '1個', category: '主食', shelfLifeDays: 180 },
-    { name: '冷凍チャーハン', calories: 480, unit: '1袋(250g)', category: '主食', shelfLifeDays: 90 },
+    { name: 'おにぎり', category: '主食', shelfLifeDays: 1 },
+    { name: '白米', category: '主食', shelfLifeDays: 2 },
+    { name: '食パン', category: '主食', shelfLifeDays: 4 },
+    { name: '菓子パン', category: '主食', shelfLifeDays: 3 },
+    { name: 'クロワッサン', category: '主食', shelfLifeDays: 3 },
+    { name: 'うどん', category: '主食', shelfLifeDays: 5 },
+    { name: 'そば', category: '主食', shelfLifeDays: 5 },
+    { name: 'パスタ・スパゲッティ', category: '主食', shelfLifeDays: 365 },
+    { name: 'カップ麺・ラーメン', category: '主食', shelfLifeDays: 180 },
+    { name: '冷凍チャーハン', category: '主食', shelfLifeDays: 90 },
 
     // 肉・魚・卵・大豆
-    { name: '鶏むね肉', calories: 110, unit: '100g', category: 'お肉・魚', shelfLifeDays: 2 },
-    { name: '鶏もも肉', calories: 200, unit: '100g', category: 'お肉・魚', shelfLifeDays: 2 },
-    { name: '豚バラ肉', calories: 380, unit: '100g', category: 'お肉・魚', shelfLifeDays: 3 },
-    { name: '豚こま肉', calories: 230, unit: '100g', category: 'お肉・魚', shelfLifeDays: 3 },
-    { name: '牛切り落とし', calories: 280, unit: '100g', category: 'お肉・魚', shelfLifeDays: 3 },
-    { name: '挽肉・ひき肉', calories: 250, unit: '100g', category: 'お肉・魚', shelfLifeDays: 2 },
-    { name: 'サーモン・鮭', calories: 130, unit: '1切れ(80g)', category: 'お肉・魚', shelfLifeDays: 2 },
-    { name: 'マグロ刺身', calories: 110, unit: '1柵(100g)', category: 'お肉・魚', shelfLifeDays: 1 },
-    { name: 'サバ・塩サバ', calories: 240, unit: '1切れ(100g)', category: 'お肉・魚', shelfLifeDays: 2 },
-    { name: 'たまご・卵', calories: 75, unit: '1個', category: 'お肉・魚', shelfLifeDays: 14 },
-    { name: '納豆', calories: 90, unit: '1パック', category: 'お肉・魚', shelfLifeDays: 10 },
-    { name: '豆腐・木綿豆腐', calories: 140, unit: '1丁(300g)', category: 'お肉・魚', shelfLifeDays: 5 },
-    { name: 'ウインナー・ソーセージ', calories: 320, unit: '1袋(5本)', category: 'お肉・魚', shelfLifeDays: 14 },
-    { name: 'ハム・ベーコン', calories: 120, unit: '1パック(4枚)', category: 'お肉・魚', shelfLifeDays: 10 },
+    { name: '鶏むね肉', category: 'お肉・魚', shelfLifeDays: 2 },
+    { name: '鶏もも肉', category: 'お肉・魚', shelfLifeDays: 2 },
+    { name: '豚バラ肉', category: 'お肉・魚', shelfLifeDays: 3 },
+    { name: '豚こま肉', category: 'お肉・魚', shelfLifeDays: 3 },
+    { name: '牛切り落とし', category: 'お肉・魚', shelfLifeDays: 3 },
+    { name: '挽肉・ひき肉', category: 'お肉・魚', shelfLifeDays: 2 },
+    { name: 'サーモン・鮭', category: 'お肉・魚', shelfLifeDays: 2 },
+    { name: 'マグロ刺身', category: 'お肉・魚', shelfLifeDays: 1 },
+    { name: 'サバ・塩サバ', category: 'お肉・魚', shelfLifeDays: 2 },
+    { name: 'たまご・卵', category: 'お肉・魚', shelfLifeDays: 14 },
+    { name: '納豆', category: 'お肉・魚', shelfLifeDays: 10 },
+    { name: '豆腐・木綿豆腐', category: 'お肉・魚', shelfLifeDays: 5 },
+    { name: 'ウインナー・ソーセージ', category: 'お肉・魚', shelfLifeDays: 14 },
+    { name: 'ハム・ベーコン', category: 'お肉・魚', shelfLifeDays: 10 },
 
     // 野菜・きのこ・果物
-    { name: 'キャベツ', calories: 45, unit: '1/4玉', category: '野菜・果物', shelfLifeDays: 7 },
-    { name: 'レタス', calories: 30, unit: '1玉', category: '野菜・果物', shelfLifeDays: 4 },
-    { name: 'トマト', calories: 40, unit: '1個', category: '野菜・果物', shelfLifeDays: 5 },
-    { name: 'ミニトマト', calories: 30, unit: '1パック', category: '野菜・果物', shelfLifeDays: 6 },
-    { name: '玉ねぎ', calories: 65, unit: '1個', category: '野菜・果物', shelfLifeDays: 14 },
-    { name: 'にんじん', calories: 50, unit: '1本', category: '野菜・果物', shelfLifeDays: 14 },
-    { name: 'じゃがいも', calories: 110, unit: '1個', category: '野菜・果物', shelfLifeDays: 20 },
-    { name: 'きゅうり', calories: 15, unit: '1本', category: '野菜・果物', shelfLifeDays: 5 },
-    { name: 'ブロッコリー', calories: 55, unit: '1株', category: '野菜・果物', shelfLifeDays: 4 },
-    { name: 'もやし', calories: 28, unit: '1袋', category: '野菜・果物', shelfLifeDays: 2 },
-    { name: 'しめじ・きのこ', calories: 20, unit: '1パック', category: '野菜・果物', shelfLifeDays: 5 },
-    { name: 'バナナ', calories: 86, unit: '1本', category: '野菜・果物', shelfLifeDays: 4 },
-    { name: 'りんご', calories: 140, unit: '1個', category: '野菜・果物', shelfLifeDays: 14 },
-    { name: 'アボカド', calories: 220, unit: '1個', category: '野菜・果物', shelfLifeDays: 4 },
+    { name: 'キャベツ', category: '野菜・果物', shelfLifeDays: 7 },
+    { name: 'レタス', category: '野菜・果物', shelfLifeDays: 4 },
+    { name: 'トマト', category: '野菜・果物', shelfLifeDays: 5 },
+    { name: 'ミニトマト', category: '野菜・果物', shelfLifeDays: 6 },
+    { name: '玉ねぎ', category: '野菜・果物', shelfLifeDays: 14 },
+    { name: 'にんじん', category: '野菜・果物', shelfLifeDays: 14 },
+    { name: 'じゃがいも', category: '野菜・果物', shelfLifeDays: 20 },
+    { name: 'きゅうり', category: '野菜・果物', shelfLifeDays: 5 },
+    { name: 'ブロッコリー', category: '野菜・果物', shelfLifeDays: 4 },
+    { name: 'もやし', category: '野菜・果物', shelfLifeDays: 2 },
+    { name: 'しめじ・きのこ', category: '野菜・果物', shelfLifeDays: 5 },
+    { name: 'バナナ', category: '野菜・果物', shelfLifeDays: 4 },
+    { name: 'りんご', category: '野菜・果物', shelfLifeDays: 14 },
+    { name: 'アボカド', category: '野菜・果物', shelfLifeDays: 4 },
 
     // 乳製品・飲料
-    { name: '牛乳', calories: 135, unit: '200ml(コップ1杯)', category: '乳製品・飲料', shelfLifeDays: 7 },
-    { name: 'ヨーグルト', calories: 100, unit: '1個(150g)', category: '乳製品・飲料', shelfLifeDays: 10 },
-    { name: 'スライスチーズ', calories: 55, unit: '1枚', category: '乳製品・飲料', shelfLifeDays: 30 },
-    { name: 'バター', calories: 150, unit: '20g', category: '乳製品・飲料', shelfLifeDays: 60 },
-    { name: '緑茶・お茶', calories: 0, unit: '500ml', category: '乳製品・飲料', shelfLifeDays: 180 },
-    { name: 'コーヒー・カフェラテ', calories: 85, unit: '1本(200ml)', category: '乳製品・飲料', shelfLifeDays: 60 },
-    { name: '野菜ジュース', calories: 70, unit: '200ml', category: '乳製品・飲料', shelfLifeDays: 90 },
-    { name: 'ビール', calories: 140, unit: '350ml缶', category: '乳製品・飲料', shelfLifeDays: 180 },
-    { name: 'チューハイ・サワー', calories: 180, unit: '350ml缶', category: '乳製品・飲料', shelfLifeDays: 180 },
+    { name: '牛乳', category: '乳製品・飲料', shelfLifeDays: 7 },
+    { name: 'ヨーグルト', category: '乳製品・飲料', shelfLifeDays: 10 },
+    { name: 'スライスチーズ', category: '乳製品・飲料', shelfLifeDays: 30 },
+    { name: 'バター', category: '乳製品・飲料', shelfLifeDays: 60 },
+    { name: '緑茶・お茶', category: '乳製品・飲料', shelfLifeDays: 180 },
+    { name: 'コーヒー・カフェラテ', category: '乳製品・飲料', shelfLifeDays: 60 },
+    { name: '野菜ジュース', category: '乳製品・飲料', shelfLifeDays: 90 },
+    { name: 'ビール', category: '乳製品・飲料', shelfLifeDays: 180 },
+    { name: 'チューハイ・サワー', category: '乳製品・飲料', shelfLifeDays: 180 },
 
     // 惣菜・お弁当・外食
-    { name: 'から揚げ・唐揚げ', calories: 320, unit: '1パック(4個)', category: '惣菜・お弁当', shelfLifeDays: 1 },
-    { name: 'コロッケ', calories: 180, unit: '1個', category: '惣菜・お弁当', shelfLifeDays: 1 },
-    { name: 'とんかつ', calories: 450, unit: '1枚', category: '惣菜・お弁当', shelfLifeDays: 1 },
-    { name: '幕の内弁当', calories: 720, unit: '1個', category: '惣菜・お弁当', shelfLifeDays: 1 },
-    { name: 'ハンバーガー', calories: 350, unit: '1個', category: '惣菜・お弁当', shelfLifeDays: 1 },
-    { name: 'ポテトフライ', calories: 320, unit: 'Mサイズ', category: '惣菜・お弁当', shelfLifeDays: 1 },
-    { name: '牛丼', calories: 680, unit: '並盛', category: '惣菜・お弁当', shelfLifeDays: 1 },
-    { name: 'ラーメン(外食)', calories: 750, unit: '1杯', category: '惣菜・お弁当', shelfLifeDays: 1 },
-    { name: 'パスタ・ピザ(外食)', calories: 650, unit: '1人前', category: '惣菜・お弁当', shelfLifeDays: 1 },
-    { name: '寿司盛り合わせ', calories: 550, unit: '8貫', category: '惣菜・お弁当', shelfLifeDays: 1 },
+    { name: 'から揚げ・唐揚げ', category: '惣菜・お弁当', shelfLifeDays: 1 },
+    { name: 'コロッケ', category: '惣菜・お弁当', shelfLifeDays: 1 },
+    { name: 'とんかつ', category: '惣菜・お弁当', shelfLifeDays: 1 },
+    { name: '幕の内弁当', category: '惣菜・お弁当', shelfLifeDays: 1 },
+    { name: 'ハンバーガー', category: '惣菜・お弁当', shelfLifeDays: 1 },
+    { name: 'ポテトフライ', category: '惣菜・お弁当', shelfLifeDays: 1 },
+    { name: '牛丼', category: '惣菜・お弁当', shelfLifeDays: 1 },
+    { name: 'ラーメン(外食)', category: '惣菜・お弁当', shelfLifeDays: 1 },
+    { name: 'パスタ・ピザ(外食)', category: '惣菜・お弁当', shelfLifeDays: 1 },
+    { name: '寿司盛り合わせ', category: '惣菜・お弁当', shelfLifeDays: 1 },
 
     // お菓子・スイーツ
-    { name: 'ポテトチップス', calories: 330, unit: '1袋(60g)', category: 'お菓子・スイーツ', shelfLifeDays: 90 },
-    { name: 'チョコレート', calories: 280, unit: '1枚(50g)', category: 'お菓子・スイーツ', shelfLifeDays: 120 },
-    { name: 'クッキー・ビスケット', calories: 220, unit: '1袋', category: 'お菓子・スイーツ', shelfLifeDays: 90 },
-    { name: 'アイスクリーム', calories: 210, unit: '1個', category: 'お菓子・スイーツ', shelfLifeDays: 180 },
-    { name: 'シュークリーム', calories: 230, unit: '1個', category: 'お菓子・スイーツ', shelfLifeDays: 2 },
-    { name: 'プリン', calories: 140, unit: '1個', category: 'お菓子・スイーツ', shelfLifeDays: 5 }
+    { name: 'ポテトチップス', category: 'お菓子・スイーツ', shelfLifeDays: 90 },
+    { name: 'チョコレート', category: 'お菓子・スイーツ', shelfLifeDays: 120 },
+    { name: 'クッキー・ビスケット', category: 'お菓子・スイーツ', shelfLifeDays: 90 },
+    { name: 'アイスクリーム', category: 'お菓子・スイーツ', shelfLifeDays: 180 },
+    { name: 'シュークリーム', category: 'お菓子・スイーツ', shelfLifeDays: 2 },
+    { name: 'プリン', category: 'お菓子・スイーツ', shelfLifeDays: 5 }
   ];
 
-  function estimateFoodCalories(itemName) {
-    if (!itemName || typeof itemName !== 'string') {
-      return null;
-    }
-    const cleanName = itemName.toLowerCase().replace(/[\s\u3000]/g, '');
-
-    for (const item of FOOD_DATABASE) {
-      const dbName = item.name.toLowerCase().replace(/[\s\u3000]/g, '');
-      const keywords = dbName.split(/[・/]/);
-      for (const kw of keywords) {
-        if (cleanName.includes(kw) || kw.includes(cleanName)) {
-          return {
-            isFood: true,
-            calories: item.calories,
-            category: item.category,
-            shelfLifeDays: item.shelfLifeDays,
-            unit: item.unit,
-            matchedName: item.name
-          };
-        }
-      }
-    }
-
-    const foodKeywords = [
-      { pattern: /(飯|米|ごはん|ライス|丼)/, cal: 250, cat: '主食', life: 2 },
-      { pattern: /(パン|サンド|トースト|バゲット)/, cal: 220, cat: '主食', life: 3 },
-      { pattern: /(麺|ラーメン|うどん|そば|パスタ|焼そば)/, cal: 350, cat: '主食', life: 4 },
-      { pattern: /(肉|牛|豚|鶏|チキン|ポーク|ビーフ|ミンチ)/, cal: 240, cat: 'お肉・魚', life: 3 },
-      { pattern: /(魚|鮭|サーモン|マグロ|刺身|サバ|エビ|イカ)/, cal: 160, cat: 'お肉・魚', life: 2 },
-      { pattern: /(菜|サラダ|トマト|ネギ|キャベツ|レタス|野菜)/, cal: 40, cat: '野菜・果物', life: 5 },
-      { pattern: /(果|リンゴ|バナナ|みかん|イチゴ|ぶどう)/, cal: 80, cat: '野菜・果物', life: 6 },
-      { pattern: /(乳|ミルク|チーズ|ヨーグルト|バター)/, cal: 120, cat: '乳製品・飲料', life: 10 },
-      { pattern: /(茶|水|コーヒー|ジュース|コーラ|ソーダ|酒|ビール)/, cal: 80, cat: '乳製品・飲料', life: 90 },
-      { pattern: /(弁|惣菜|カツ|フライ|唐揚|揚|弁当)/, cal: 450, cat: '惣菜・お弁当', life: 1 },
-      { pattern: /(チョコ|菓子|スナック|アイス|ケーキ|クッキー)/, cal: 260, cat: 'お菓子・スイーツ', life: 60 }
-    ];
-
-    for (const { pattern, cal, cat, life } of foodKeywords) {
-      if (pattern.test(cleanName)) {
-        return {
-          isFood: true,
-          calories: cal,
-          category: cat,
-          shelfLifeDays: life,
-          unit: '1個/パック',
-          matchedName: itemName
-        };
-      }
-    }
-
-    return {
-      isFood: false,
-      calories: 0,
-      category: 'その他',
-      shelfLifeDays: null,
-      unit: '',
-      matchedName: itemName
-    };
-  }
-
   /* ==========================================================================
-     1.5 レシート画像 IndexedDB ストレージ
-     LocalStorageの容量制限（約5MB）を回避し、高画質な写真を安全に保存
+     2. IndexedDB 画像キャッシュ (レシート原本写真用)
      ========================================================================== */
   class ReceiptImageDB {
     static DB_NAME = 'SmartKakeiboDB';
@@ -192,7 +131,7 @@
           tx.onerror = () => resolve(false);
         });
       } catch (e) {
-        console.warn('Failed to save image to IndexedDB:', e);
+        console.warn('IndexedDB saveImage error:', e);
         return false;
       }
     }
@@ -210,172 +149,103 @@
           req.onerror = () => resolve(null);
         });
       } catch (e) {
-        console.warn('Failed to get image from IndexedDB:', e);
+        console.warn('IndexedDB getImage error:', e);
         return null;
       }
     }
 
     static async deleteImage(id) {
-      if (!id) return false;
+      if (!id) return;
       try {
         const db = await this.openDB();
-        if (!db) return false;
-        return new Promise((resolve) => {
-          const tx = db.transaction([this.STORE_NAME], 'readwrite');
-          const store = tx.objectStore(this.STORE_NAME);
-          store.delete(id);
-          tx.oncomplete = () => resolve(true);
-          tx.onerror = () => resolve(false);
-        });
+        if (!db) return;
+        const tx = db.transaction([this.STORE_NAME], 'readwrite');
+        tx.objectStore(this.STORE_NAME).delete(id);
       } catch (e) {
-        console.warn('Failed to delete image from IndexedDB:', e);
-        return false;
+        console.warn('IndexedDB deleteImage error:', e);
       }
     }
 
-    static async clearAllImages() {
+    static async clearAll() {
       try {
         const db = await this.openDB();
-        if (!db) return false;
-        return new Promise((resolve) => {
-          const tx = db.transaction([this.STORE_NAME], 'readwrite');
-          const store = tx.objectStore(this.STORE_NAME);
-          store.clear();
-          tx.oncomplete = () => resolve(true);
-          tx.onerror = () => resolve(false);
-        });
+        if (!db) return;
+        const tx = db.transaction([this.STORE_NAME], 'readwrite');
+        tx.objectStore(this.STORE_NAME).clear();
       } catch (e) {
-        console.warn('Failed to clear IndexedDB images:', e);
-        return false;
+        console.warn('IndexedDB clearAll error:', e);
       }
     }
   }
 
   /* ==========================================================================
-     2. データストアモジュール
+     3. 家計簿 & 冷蔵庫ストック データストア
      ========================================================================== */
   const STORAGE_KEYS = {
-    TRANSACTIONS: 'smart_kakeibo_transactions_v1',
-    FRIDGE_STOCK: 'smart_kakeibo_fridge_v1',
-    SETTINGS: 'smart_kakeibo_settings_v1',
-    INITIALIZED: 'smart_kakeibo_initialized_v1'
+    TRANSACTIONS: 'smart_kakeibo_transactions_v2',
+    FRIDGE_STOCK: 'smart_kakeibo_fridge_v2',
+    SETTINGS: 'smart_kakeibo_settings_v2'
   };
 
   const DEFAULT_SETTINGS = {
     geminiApiKey: '',
     monthlyBudget: 75000,
-    dailyCalorieTarget: 2200,
     useDemoScanner: true,
-    saveReceiptPhotos: false // デフォルトOFF: 解析後は写真破棄し家計簿データのみ保存（容量完全ゼロ）
+    saveReceiptPhotos: false
   };
 
-  class AppStore {
+  class KakeiboStore {
     constructor() {
       this.transactions = [];
       this.fridgeItems = [];
       this.settings = { ...DEFAULT_SETTINGS };
       this.listeners = new Set();
-      this.load();
+      this.init();
     }
 
-    load() {
+    init() {
       try {
-        const storedSettings = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-        if (storedSettings) {
-          this.settings = { ...DEFAULT_SETTINGS, ...JSON.parse(storedSettings) };
-        }
-
-        const isInit = localStorage.getItem(STORAGE_KEYS.INITIALIZED);
-        const storedTx = localStorage.getItem(STORAGE_KEYS.TRANSACTIONS);
-        const storedFridge = localStorage.getItem(STORAGE_KEYS.FRIDGE_STOCK);
-
-        if (storedTx !== null) {
-          this.transactions = JSON.parse(storedTx);
-          // 既存データに receiptImage が残っている場合は IndexedDB へ退避し LocalStorage を軽量化
-          let migrated = false;
-          this.transactions.forEach(tx => {
-            if (tx.receiptImage) {
-              ReceiptImageDB.saveImage(tx.id, tx.receiptImage);
-              tx.hasImage = true;
-              tx.imageId = tx.id;
-              delete tx.receiptImage;
-              migrated = true;
-            }
-          });
-          if (migrated) {
-            this.saveTransactions();
-          }
-        } else if (!isInit) {
-          // 初回アクセス時のみデモデータを生成
-          this.transactions = this.generateInitialDemoData();
-          this.saveTransactions();
-          localStorage.setItem(STORAGE_KEYS.INITIALIZED, 'true');
-        } else {
-          this.transactions = [];
-        }
-
-        if (storedFridge !== null) {
-          this.fridgeItems = JSON.parse(storedFridge);
-        } else if (!isInit) {
-          this.fridgeItems = this.generateInitialFridgeData();
-          this.saveFridge();
-        } else {
-          this.fridgeItems = [];
+        const savedSettings = localStorage.getItem(STORAGE_KEYS.SETTINGS) || localStorage.getItem('smart_kakeibo_settings_v1');
+        if (savedSettings) {
+          this.settings = { ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings) };
         }
       } catch (err) {
-        console.error('Failed to load from storage:', err);
-        this.transactions = [];
-        this.fridgeItems = [];
+        console.warn('Settings load error:', err);
       }
-    }
 
-    clearAllData() {
-      this.transactions = [];
-      this.fridgeItems = [];
-      localStorage.setItem(STORAGE_KEYS.INITIALIZED, 'true');
-      this.saveTransactions();
-      this.saveFridge();
-      ReceiptImageDB.clearAllImages();
-      this.notify();
-    }
+      try {
+        const savedTx = localStorage.getItem(STORAGE_KEYS.TRANSACTIONS) || localStorage.getItem('smart_kakeibo_transactions_v1');
+        if (savedTx) {
+          this.transactions = JSON.parse(savedTx);
+        } else {
+          this.transactions = this.generateInitialDemoData();
+          this.saveTransactions();
+        }
+      } catch (err) {
+        console.warn('Transactions load error:', err);
+        this.transactions = this.generateInitialDemoData();
+      }
 
-    loadDemoData() {
-      this.transactions = this.generateInitialDemoData();
-      this.fridgeItems = this.generateInitialFridgeData();
-      localStorage.setItem(STORAGE_KEYS.INITIALIZED, 'true');
-      this.saveTransactions();
-      this.saveFridge();
-      this.notify();
+      try {
+        const savedFridge = localStorage.getItem(STORAGE_KEYS.FRIDGE_STOCK) || localStorage.getItem('smart_kakeibo_fridge_v1');
+        if (savedFridge) {
+          this.fridgeItems = JSON.parse(savedFridge);
+        } else {
+          this.fridgeItems = this.generateInitialFridgeData();
+          this.saveFridge();
+        }
+      } catch (err) {
+        console.warn('Fridge load error:', err);
+        this.fridgeItems = this.generateInitialFridgeData();
+      }
     }
 
     saveTransactions() {
       try {
-        // LocalStorageの容量枯渇（QuotaExceededError）を防ぐため、
-        // 万一巨大なBase64画像文字列が含まれていても除外して軽量なメタデータのみ保存
-        const safeTransactions = this.transactions.map(tx => {
-          if (tx.receiptImage) {
-            const { receiptImage, ...rest } = tx;
-            return { ...rest, hasImage: true, imageId: tx.id };
-          }
-          return tx;
-        });
-        localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(safeTransactions));
+        localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(this.transactions));
         this.notify();
       } catch (err) {
-        console.error('Failed to save transactions to localStorage:', err);
-        if (err.name === 'QuotaExceededError' || err.code === 22 || err.code === 1014) {
-          try {
-            const pruned = this.transactions.slice(0, 50).map(({ receiptImage, memo, ...rest }) => ({
-              ...rest,
-              memo: (memo || '').slice(0, 50)
-            }));
-            localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(pruned));
-            this.notify();
-            console.warn('Saved transactions after emergency pruning due to quota limit.');
-          } catch (retryErr) {
-            alert('ブラウザの保存容量制限により家計簿データを保存できませんでした。');
-          }
-        }
+        console.error('Failed to save transactions:', err);
       }
     }
 
@@ -390,9 +260,7 @@
 
     saveSettings(newSettings) {
       this.settings = { ...this.settings, ...newSettings };
-      try {
-        localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(this.settings));
-      } catch (e) {}
+      localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(this.settings));
       this.notify();
     }
 
@@ -413,35 +281,24 @@
 
     addTransaction(record, addToFridge = true) {
       const id = 'tx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
-      let totalCalories = 0;
-      let totalDiscount = Number(record.totalDiscount) || 0;
+      const totalDiscount = record.totalDiscount || 0;
 
       const items = (record.items || []).map(item => {
         let isFood = item.isFood;
-        let calories = Number(item.calories) || 0;
         let category = item.category || 'その他';
         let shelfLife = item.shelfLifeDays;
 
         if (isFood === undefined) {
-          const est = estimateFoodCalories(item.name);
-          isFood = est.isFood;
-          calories = calories || est.calories;
-          category = est.category || category;
-          shelfLife = shelfLife || est.shelfLifeDays;
+          isFood = category !== '日用品' && category !== 'その他';
         }
-
-        const qty = Number(item.quantity) || 1;
-        const itemTotalCal = calories * qty;
-        totalCalories += itemTotalCal;
 
         return {
           id: 'item_' + Math.random().toString(36).substr(2, 7),
           name: item.name,
           price: Number(item.price) || 0,
-          quantity: qty,
+          quantity: Number(item.quantity) || 1,
           category,
           isFood,
-          calories: itemTotalCal,
           shelfLifeDays: shelfLife || 3
         };
       });
@@ -449,22 +306,16 @@
       const newTx = {
         id,
         date: record.date || new Date().toISOString().split('T')[0],
-        store: record.store || '店舗未登録',
-        totalAmount: Number(record.totalAmount) || items.reduce((sum, i) => sum + (i.price * i.quantity), 0),
+        store: record.store || '店舗未記入',
+        totalAmount: record.totalAmount,
         totalDiscount,
-        totalCalories,
-        category: record.category || (items[0] ? items[0].category : '食費'),
+        category: record.category || (items[0] ? items[0].category : 'その他'),
         items,
         memo: record.memo || '',
-        hasImage: !!record.receiptImage,
-        imageId: record.receiptImage ? id : null,
+        hasImage: !!record.hasImage,
+        imageId: record.imageId || null,
         createdAt: new Date().toISOString()
       };
-
-      // レシート写真は IndexedDB に安全に保存（LocalStorageの容量を圧迫しない）
-      if (record.receiptImage) {
-        ReceiptImageDB.saveImage(id, record.receiptImage);
-      }
 
       this.transactions.unshift(newTx);
       this.saveTransactions();
@@ -474,9 +325,8 @@
           this.addFridgeItem({
             name: food.name,
             category: food.category,
-            calories: food.calories,
             addedDate: newTx.date,
-            expiryDate: this.calculateExpiry(newTx.date, food.shelfLifeDays || 4),
+            expiryDate: this.calculateExpiry(newTx.date, food.shelfLifeDays),
             transactionId: id
           });
         });
@@ -486,35 +336,37 @@
     }
 
     deleteTransaction(id) {
+      const target = this.transactions.find(t => t.id === id);
+      if (target && target.imageId) {
+        ReceiptImageDB.deleteImage(target.imageId);
+      }
       this.transactions = this.transactions.filter(t => t.id !== id);
       this.saveTransactions();
-      ReceiptImageDB.deleteImage(id);
     }
 
     deleteTransactionItem(txId, itemId) {
       const tx = this.transactions.find(t => t.id === txId);
-      if (!tx) return;
+      if (!tx || !tx.items) return null;
 
-      tx.items = (tx.items || []).filter(i => i.id !== itemId);
-      if (tx.items.length === 0) {
-        this.deleteTransaction(txId);
-        return;
-      }
-
-      // 合計金額・合計カロリーを再計算
+      tx.items = tx.items.filter(i => i.id !== itemId);
       const itemsSum = tx.items.reduce((sum, i) => sum + (i.price * (i.quantity || 1)), 0);
       tx.totalAmount = Math.max(0, itemsSum - (tx.totalDiscount || 0));
-      tx.totalCalories = tx.items.reduce((sum, i) => sum + ((i.calories || 0) * (i.quantity || 1)), 0);
+
+      if (tx.items.length === 0) {
+        this.deleteTransaction(txId);
+        return null;
+      }
 
       this.saveTransactions();
+      return tx;
     }
 
     updateTransaction(id, updatedData) {
       const tx = this.transactions.find(t => t.id === id);
       if (!tx) return null;
 
-      if (updatedData.store !== undefined) tx.store = updatedData.store;
-      if (updatedData.date !== undefined) tx.date = updatedData.date;
+      if (updatedData.date) tx.date = updatedData.date;
+      if (updatedData.store) tx.store = updatedData.store;
       if (updatedData.memo !== undefined) tx.memo = updatedData.memo;
       if (updatedData.totalDiscount !== undefined) tx.totalDiscount = Number(updatedData.totalDiscount) || 0;
 
@@ -529,18 +381,15 @@
             name: i.name || '品目',
             price: Number(i.price) || 0,
             quantity: Number(i.quantity) || 1,
-            calories: Number(i.calories) || 0,
-            category: i.category || '主食',
+            category: i.category || 'その他',
             isFood,
             shelfLifeDays: i.shelfLifeDays || 3
           };
         });
       }
 
-      // 合計金額・合計カロリーを再計算
       const itemsSum = (tx.items || []).reduce((sum, i) => sum + (i.price * (i.quantity || 1)), 0);
       tx.totalAmount = Math.max(0, itemsSum - (tx.totalDiscount || 0));
-      tx.totalCalories = (tx.items || []).reduce((sum, i) => sum + ((i.calories || 0) * (i.quantity || 1)), 0);
       if (tx.items && tx.items[0]) {
         tx.category = tx.items[0].category;
       }
@@ -560,7 +409,6 @@
         id: 'fridge_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
         name: item.name,
         category: item.category || 'その他',
-        calories: item.calories || 0,
         addedDate: item.addedDate || new Date().toISOString().split('T')[0],
         expiryDate: item.expiryDate,
         isConsumed: false,
@@ -584,16 +432,6 @@
       this.saveFridge();
     }
 
-    clearFridgeConsumed() {
-      this.fridgeItems = this.fridgeItems.filter(f => !f.isConsumed);
-      this.saveFridge();
-    }
-
-    clearAllFridge() {
-      this.fridgeItems = [];
-      this.saveFridge();
-    }
-
     getStats(period = 'monthly', targetDate = new Date()) {
       const now = new Date(targetDate);
       const targetYear = now.getFullYear();
@@ -614,27 +452,38 @@
       }
 
       const totalExpense = filtered.reduce((sum, t) => sum + t.totalAmount, 0);
-      const totalCalories = filtered.reduce((sum, t) => sum + (t.totalCalories || 0), 0);
       const totalDiscount = filtered.reduce((sum, t) => sum + (t.totalDiscount || 0), 0);
       const transactionCount = filtered.length;
+      const avgSpendPerShop = transactionCount > 0 ? Math.round(totalExpense / transactionCount) : 0;
 
       const categoryTotals = {};
-      const calorieByCategory = {};
+      const storeTotals = {};
+
       filtered.forEach(t => {
-        t.items.forEach(item => {
+        const storeName = t.store || '店舗未記入';
+        if (!storeTotals[storeName]) {
+          storeTotals[storeName] = { amount: 0, count: 0 };
+        }
+        storeTotals[storeName].amount += t.totalAmount;
+        storeTotals[storeName].count += 1;
+
+        (t.items || []).forEach(item => {
           const cat = item.category || 'その他';
-          categoryTotals[cat] = (categoryTotals[cat] || 0) + (item.price * item.quantity);
-          if (item.isFood && item.calories) {
-            calorieByCategory[cat] = (calorieByCategory[cat] || 0) + item.calories;
-          }
+          const cost = (item.price || 0) * (item.quantity || 1);
+          categoryTotals[cat] = (categoryTotals[cat] || 0) + cost;
         });
       });
 
-      const calPer100Yen = totalExpense > 0 ? Math.round((totalCalories / totalExpense) * 100) : 0;
+      const catEntries = Object.entries(categoryTotals).filter(([, val]) => val > 0);
+      catEntries.sort((a, b) => b[1] - a[1]);
+      const topCategories = catEntries.slice(0, 3).map(([name, amount]) => ({
+        name,
+        amount,
+        pct: totalExpense > 0 ? Math.round((amount / totalExpense) * 100) : 0
+      }));
 
       let timelineLabels = [];
       let timelineExpenses = [];
-      let timelineCalories = [];
 
       if (period === 'monthly') {
         const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
@@ -643,7 +492,6 @@
           timelineLabels.push(`${day}日`);
           const dayTxs = filtered.filter(t => t.date === dStr);
           timelineExpenses.push(dayTxs.reduce((sum, t) => sum + t.totalAmount, 0));
-          timelineCalories.push(dayTxs.reduce((sum, t) => sum + (t.totalCalories || 0), 0));
         }
       } else if (period === 'daily') {
         for (let i = 6; i >= 0; i--) {
@@ -655,7 +503,6 @@
 
           const dayTxs = this.transactions.filter(t => t.date === dStr);
           timelineExpenses.push(dayTxs.reduce((sum, t) => sum + t.totalAmount, 0));
-          timelineCalories.push(dayTxs.reduce((sum, t) => sum + (t.totalCalories || 0), 0));
         }
       } else {
         for (let i = 5; i >= 0; i--) {
@@ -669,16 +516,7 @@
             return ty === y && tm === m;
           });
           timelineExpenses.push(monthTxs.reduce((sum, t) => sum + t.totalAmount, 0));
-          timelineCalories.push(monthTxs.reduce((sum, t) => sum + (t.totalCalories || 0), 0));
         }
-      }
-
-      let averageDailyCalories = 0;
-      if (period === 'daily') {
-        averageDailyCalories = totalCalories;
-      } else {
-        const activeDays = new Set(filtered.map(t => t.date)).size || 1;
-        averageDailyCalories = Math.round(totalCalories / activeDays);
       }
 
       return {
@@ -687,17 +525,15 @@
         month: targetMonth,
         dateStr: targetDateStr,
         totalExpense,
-        totalCalories,
         totalDiscount,
         transactionCount,
-        calPer100Yen,
-        averageDailyCalories,
+        avgSpendPerShop,
         categoryTotals,
-        calorieByCategory,
+        topCategories,
+        storeTotals,
         timeline: {
           labels: timelineLabels,
-          expenses: timelineExpenses,
-          calories: timelineCalories
+          expenses: timelineExpenses
         }
       };
     }
@@ -715,130 +551,209 @@
           id: 'tx_demo_1',
           date: formatDate(0),
           store: 'ライフ スーパーマーケット',
-          totalAmount: 2680,
-          totalDiscount: 240,
-          totalCalories: 1850,
+          totalAmount: 3420,
+          totalDiscount: 150,
           category: '食費',
-          memo: '週末の自炊用まとめ買い（見切り品割引あり）',
+          memo: '夕食用の食材買い出し。豚肉がお買い得でした。',
           items: [
-            { id: 'i1', name: '国産 豚こま切れ肉 250g', price: 420, quantity: 1, category: 'お肉・魚', isFood: true, calories: 575, shelfLifeDays: 3 },
-            { id: 'i2', name: 'キャベツ 1/2カット', price: 98, quantity: 1, category: '野菜・果物', isFood: true, calories: 90, shelfLifeDays: 7 },
-            { id: 'i3', name: 'おいしい牛乳 1000ml', price: 238, quantity: 1, category: '乳製品・飲料', isFood: true, calories: 675, shelfLifeDays: 6 },
-            { id: 'i4', name: '絹ごし豆腐 3個パック', price: 108, quantity: 1, category: 'お肉・魚', isFood: true, calories: 180, shelfLifeDays: 5 },
-            { id: 'i5', name: '特売バナナ 1袋(4本)', price: 158, quantity: 1, category: '野菜・果物', isFood: true, calories: 330, shelfLifeDays: 4 },
-            { id: 'i6', name: 'アルミホイル 8m', price: 168, quantity: 1, category: '日用品', isFood: false, calories: 0, shelfLifeDays: null }
-          ],
-          createdAt: new Date().toISOString()
+            { id: 'it_1', name: '国産 豚ロース生姜焼き用', price: 498, quantity: 1, isFood: true, category: 'お肉・魚', shelfLifeDays: 3 },
+            { id: 'it_2', name: '長ネギ 2本入', price: 158, quantity: 1, isFood: true, category: '野菜・果物', shelfLifeDays: 5 },
+            { id: 'it_3', name: 'もやし 1袋', price: 38, quantity: 2, isFood: true, category: '野菜・果物', shelfLifeDays: 2 },
+            { id: 'it_4', name: '北海道牛乳 1000ml', price: 238, quantity: 1, isFood: true, category: '乳製品・飲料', shelfLifeDays: 6 },
+            { id: 'it_5', name: 'こしひかり 5kg', price: 2480, quantity: 1, isFood: true, category: '主食', shelfLifeDays: 90 }
+          ]
         },
         {
           id: 'tx_demo_2',
           date: formatDate(1),
           store: 'セブン-イレブン',
-          totalAmount: 890,
+          totalAmount: 640,
           totalDiscount: 0,
-          totalCalories: 620,
-          category: '外食・中食',
-          memo: '出先でのランチ',
+          category: '惣菜・お弁当',
+          memo: '出社時ランチ',
           items: [
-            { id: 'i7', name: 'ツナマヨおにぎり', price: 160, quantity: 1, category: '主食', isFood: true, calories: 220, shelfLifeDays: 1 },
-            { id: 'i8', name: 'サラダチキン プレーン', price: 238, quantity: 1, category: 'お肉・魚', isFood: true, calories: 115, shelfLifeDays: 10 },
-            { id: 'i9', name: 'カフェラテ レギュラー', price: 190, quantity: 1, category: '乳製品・飲料', isFood: true, calories: 105, shelfLifeDays: 1 },
-            { id: 'i10', name: 'シュークリーム', price: 168, quantity: 1, category: 'お菓子・スイーツ', isFood: true, calories: 180, shelfLifeDays: 2 }
-          ],
-          createdAt: new Date().toISOString()
+            { id: 'it_6', name: '具だくさん豚汁', price: 340, quantity: 1, isFood: true, category: '惣菜・お弁当', shelfLifeDays: 1 },
+            { id: 'it_7', name: '手巻おにぎり 昆布', price: 160, quantity: 1, isFood: true, category: '主食', shelfLifeDays: 1 },
+            { id: 'it_8', name: 'お茶 600ml', price: 140, quantity: 1, isFood: true, category: '乳製品・飲料', shelfLifeDays: 90 }
+          ]
         },
         {
           id: 'tx_demo_3',
-          date: formatDate(2),
+          date: formatDate(3),
           store: 'マツモトキヨシ',
-          totalAmount: 1980,
-          totalDiscount: 150,
-          totalCalories: 210,
+          totalAmount: 2180,
+          totalDiscount: 200,
           category: '日用品',
-          memo: 'シャンプー補充と常備サプリ',
+          memo: '生活消耗品まとめ買い',
           items: [
-            { id: 'i11', name: '詰め替え用シャンプー', price: 680, quantity: 1, category: '日用品', isFood: false, calories: 0, shelfLifeDays: null },
-            { id: 'i12', name: 'ボックスティッシュ 5箱', price: 348, quantity: 1, category: '日用品', isFood: false, calories: 0, shelfLifeDays: null },
-            { id: 'i13', name: 'プロテインバー チョコ味', price: 160, quantity: 1, category: 'お菓子・スイーツ', isFood: true, calories: 210, shelfLifeDays: 90 }
-          ],
-          createdAt: new Date().toISOString()
+            { id: 'it_9', name: 'トイレットペーパー 12ロール', price: 498, quantity: 1, isFood: false, category: '日用品', shelfLifeDays: null },
+            { id: 'it_10', name: '洗濯洗剤 詰替特大', price: 798, quantity: 1, isFood: false, category: '日用品', shelfLifeDays: null },
+            { id: 'it_11', name: '食器用洗剤', price: 198, quantity: 1, isFood: false, category: '日用品', shelfLifeDays: null },
+            { id: 'it_12', name: 'デンタルハミガキ', price: 386, quantity: 1, isFood: false, category: '日用品', shelfLifeDays: null },
+            { id: 'it_13', name: '除菌ウェットシート', price: 500, quantity: 1, isFood: false, category: '日用品', shelfLifeDays: null }
+          ]
         },
         {
           id: 'tx_demo_4',
-          date: formatDate(4),
-          store: 'イオン スタイル',
-          totalAmount: 3820,
-          totalDiscount: 380,
-          totalCalories: 2600,
-          category: '食費',
-          memo: '平日の食材仕入れ',
+          date: formatDate(5),
+          store: 'イオン フードスタイル',
+          totalAmount: 4890,
+          totalDiscount: 350,
+          category: 'お肉・魚',
+          memo: '週末の作り置き用まとめ買い（見切りシールで節約！）',
           items: [
-            { id: 'i14', name: '若鶏もも肉 2枚(400g)', price: 480, quantity: 1, category: 'お肉・魚', isFood: true, calories: 800, shelfLifeDays: 2 },
-            { id: 'i15', name: '玉ねぎ 3個ネット', price: 198, quantity: 1, category: '野菜・果物', isFood: true, calories: 195, shelfLifeDays: 14 },
-            { id: 'i16', name: '食パン 6枚切り', price: 158, quantity: 1, category: '主食', isFood: true, calories: 960, shelfLifeDays: 4 },
-            { id: 'i17', name: 'ミニトマト 1パック', price: 218, quantity: 1, category: '野菜・果物', isFood: true, calories: 30, shelfLifeDays: 5 },
-            { id: 'i18', name: 'ミックスナッツ 1袋', price: 498, quantity: 1, category: 'お菓子・スイーツ', isFood: true, calories: 615, shelfLifeDays: 60 }
-          ],
-          createdAt: new Date().toISOString()
+            { id: 'it_14', name: '生サーモン切り身', price: 680, quantity: 1, isFood: true, category: 'お肉・魚', shelfLifeDays: 2 },
+            { id: 'it_15', name: '鶏むね肉 2枚(約600g)', price: 420, quantity: 1, isFood: true, category: 'お肉・魚', shelfLifeDays: 2 },
+            { id: 'it_16', name: 'ブロッコリー 1株', price: 198, quantity: 1, isFood: true, category: '野菜・果物', shelfLifeDays: 4 },
+            { id: 'it_17', name: '卵 10個入', price: 238, quantity: 1, isFood: true, category: 'お肉・魚', shelfLifeDays: 14 },
+            { id: 'it_18', name: '食パン 6枚切', price: 168, quantity: 1, isFood: true, category: '主食', shelfLifeDays: 4 },
+            { id: 'it_19', name: '無糖ヨーグルト 400g', price: 188, quantity: 1, isFood: true, category: '乳製品・飲料', shelfLifeDays: 7 },
+            { id: 'it_20', name: 'オリーブオイル 400g', price: 798, quantity: 1, isFood: true, category: 'その他', shelfLifeDays: 365 },
+            { id: 'it_21', name: '納豆 3パック', price: 98, quantity: 2, isFood: true, category: 'お肉・魚', shelfLifeDays: 10 },
+            { id: 'it_22', name: 'ミックスナッツ大袋', price: 980, quantity: 1, isFood: true, category: 'お菓子・スイーツ', shelfLifeDays: 180 },
+            { id: 'it_23', name: 'キャベツ 1/2カット', price: 128, quantity: 1, isFood: true, category: '野菜・果物', shelfLifeDays: 5 },
+            { id: 'it_24', name: '玉ねぎ 3個ネット', price: 198, quantity: 1, isFood: true, category: '野菜・果物', shelfLifeDays: 14 }
+          ]
         }
       ];
     }
 
     generateInitialFridgeData() {
       const today = new Date();
-      const addDays = (d, count) => {
-        const dt = new Date(d);
-        dt.setDate(dt.getDate() + count);
-        return dt.toISOString().split('T')[0];
+      const formatOffset = (days) => {
+        const d = new Date(today);
+        d.setDate(d.getDate() + days);
+        return d.toISOString().split('T')[0];
+      };
+      const formatPast = (days) => {
+        const d = new Date(today);
+        d.setDate(d.getDate() - days);
+        return d.toISOString().split('T')[0];
       };
 
       return [
-        {
-          id: 'fridge_1',
-          name: '国産 豚こま切れ肉 250g',
-          category: 'お肉・魚',
-          calories: 575,
-          addedDate: today.toISOString().split('T')[0],
-          expiryDate: addDays(today, 2),
-          isConsumed: false
-        },
-        {
-          id: 'fridge_2',
-          name: 'おいしい牛乳 1000ml',
-          category: '乳製品・飲料',
-          calories: 675,
-          addedDate: today.toISOString().split('T')[0],
-          expiryDate: addDays(today, 4),
-          isConsumed: false
-        },
-        {
-          id: 'fridge_3',
-          name: 'キャベツ 1/2カット',
-          category: '野菜・果物',
-          calories: 90,
-          addedDate: today.toISOString().split('T')[0],
-          expiryDate: addDays(today, 5),
-          isConsumed: false
-        },
-        {
-          id: 'fridge_4',
-          name: '絹ごし豆腐 3個パック',
-          category: 'お肉・魚',
-          calories: 180,
-          addedDate: today.toISOString().split('T')[0],
-          expiryDate: addDays(today, 1),
-          isConsumed: false
-        }
+        { id: 'fridge_demo_1', name: 'もやし 1袋', category: '野菜・果物', addedDate: formatPast(0), expiryDate: formatOffset(1), isConsumed: false },
+        { id: 'fridge_demo_2', name: '国産 豚ロース生姜焼き用', category: 'お肉・魚', addedDate: formatPast(0), expiryDate: formatOffset(2), isConsumed: false },
+        { id: 'fridge_demo_3', name: '長ネギ 2本入', category: '野菜・果物', addedDate: formatPast(0), expiryDate: formatOffset(4), isConsumed: false },
+        { id: 'fridge_demo_4', name: '北海道牛乳 1000ml', category: '乳製品・飲料', addedDate: formatPast(0), expiryDate: formatOffset(5), isConsumed: false },
+        { id: 'fridge_demo_5', name: '卵 10個入', category: 'お肉・魚', addedDate: formatPast(2), expiryDate: formatOffset(10), isConsumed: false }
       ];
+    }
+
+    clearAllData() {
+      this.transactions = [];
+      this.fridgeItems = [];
+      localStorage.removeItem(STORAGE_KEYS.TRANSACTIONS);
+      localStorage.removeItem(STORAGE_KEYS.FRIDGE_STOCK);
+      localStorage.removeItem('smart_kakeibo_transactions_v1');
+      localStorage.removeItem('smart_kakeibo_fridge_v1');
+      ReceiptImageDB.clearAll();
+      this.saveTransactions();
+      this.saveFridge();
+      this.notify();
+    }
+
+    loadDemoData() {
+      this.transactions = this.generateInitialDemoData();
+      this.fridgeItems = this.generateInitialFridgeData();
+      this.saveTransactions();
+      this.saveFridge();
+      this.notify();
     }
   }
 
-  const store = new AppStore();
-  window.appStore = store;
+  const store = new KakeiboStore();
 
   /* ==========================================================================
-     3. Gemini API & デモレシートモジュール
+     4. Gemini API レシート画像解析 & デモスキャナー
      ========================================================================== */
+  const SYSTEM_PROMPT = `
+あなたは日本のレシート読み取りの最高峰のAIアシスタントです。
+提供されたレシート画像から、次の情報を正確に抽出し、指定のJSON形式でのみ出力してください。余分なMarkdownのバッククォートや説明文は一切含めず、純粋なJSON文字列のみを返してください。
+
+抽出項目:
+1. store: 店舗名 (スーパー名、コンビニ名、ドラッグストア名、飲食店名など)
+2. date: レシートの発行日 (YYYY-MM-DD形式。不明な場合は今日の日付)
+3. totalAmount: 最終支払合計金額 (税込・割引適用後・数値)
+4. totalDiscount: 値引きやクーポン・ポイント値引きの合計額 (数値、なければ0)
+5. items: 品目ごとの配列
+   - name: 商品名 (レシート記載名を自然な日本語に補正)
+   - price: 金額 (税込数値)
+   - quantity: 数量 (通常は1)
+   - isFood: 食べ物または飲み物の場合は true、日用品等は false
+   - category: '主食' | 'お肉・魚' | '野菜・果物' | '乳製品・飲料' | '惣菜・お弁当' | 'お菓子・スイーツ' | '日用品' | 'その他'
+   - shelfLifeDays: 食品の場合の一般的な冷蔵・冷暗所での消費目安日数 (例: 刺身なら1, 牛乳なら6, 野菜なら5, 食パンなら4)
+`;
+
+  async function parseReceiptWithGemini(base64Image, mimeType = 'image/jpeg', apiKey = '') {
+    if (!apiKey) {
+      throw new Error('Gemini APIキーが設定されていません。設定画面でAPIキーを入力するか、デモモードをご利用ください。');
+    }
+
+    const cleanBase64 = base64Image.replace(/^data:image\/[a-z]+;base64,/, '');
+    const candidateModels = ['gemini-2.5-flash', 'gemini-1.5-flash'];
+    let lastError = null;
+
+    for (const modelName of candidateModels) {
+      try {
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+        const requestBody = {
+          contents: [{ parts: [{ text: SYSTEM_PROMPT }, { inline_data: { mime_type: mimeType, data: cleanBase64 } }] }],
+          generationConfig: { temperature: 0.1, responseMimeType: 'application/json' }
+        };
+
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody)
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(`APIエラー (${response.status}): ${errorData.error?.message || response.statusText}`);
+        }
+
+        const resData = await response.json();
+        const text = resData.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!text) throw new Error('Gemini APIから応答が得られませんでした。');
+
+        let cleaned = text.trim();
+        if (cleaned.startsWith('```json')) cleaned = cleaned.substring(7);
+        else if (cleaned.startsWith('```')) cleaned = cleaned.substring(3);
+        if (cleaned.endsWith('```')) cleaned = cleaned.substring(0, cleaned.length - 3);
+        cleaned = cleaned.trim();
+
+        const data = JSON.parse(cleaned);
+        const items = (data.items || []).map(item => {
+          let isFood = item.isFood;
+          let category = item.category || 'その他';
+          if (isFood === undefined) isFood = category !== '日用品' && category !== 'その他';
+          return {
+            name: item.name || '商品',
+            price: Number(item.price) || 0,
+            quantity: Number(item.quantity) || 1,
+            isFood: !!isFood,
+            category,
+            shelfLifeDays: item.shelfLifeDays || 3
+          };
+        });
+
+        const totalAmount = Number(data.totalAmount) || items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+        return {
+          store: data.store || '店舗不明',
+          date: data.date || new Date().toISOString().split('T')[0],
+          totalAmount,
+          totalDiscount: Number(data.totalDiscount) || 0,
+          items
+        };
+      } catch (err) {
+        console.warn(`Model ${modelName} failed:`, err);
+        lastError = err;
+      }
+    }
+    throw lastError || new Error('レシートの解析に失敗しました。');
+  }
+
   const DEMO_RECEIPTS = [
     {
       name: 'スーパー（自炊・食材まとめ買い）',
@@ -846,12 +761,12 @@
       date: new Date().toISOString().split('T')[0],
       totalDiscount: 310,
       items: [
-        { name: '国産 豚ロース生姜焼き用 300g', price: 468, quantity: 1, isFood: true, category: 'お肉・魚', calories: 690, shelfLifeDays: 3 },
-        { name: '高原レタス 1玉', price: 128, quantity: 1, isFood: true, category: '野菜・果物', calories: 30, shelfLifeDays: 4 },
-        { name: '成分無調整牛乳 1000ml', price: 218, quantity: 1, isFood: true, category: '乳製品・飲料', calories: 670, shelfLifeDays: 6 },
-        { name: '超熟 6枚切', price: 168, quantity: 1, isFood: true, category: '主食', calories: 960, shelfLifeDays: 4 },
-        { name: 'お徳用たまご 10個入', price: 248, quantity: 1, isFood: true, category: 'お肉・魚', calories: 750, shelfLifeDays: 14 },
-        { name: 'キッチン泡ハイター 詰替', price: 198, quantity: 1, isFood: false, category: '日用品', calories: 0, shelfLifeDays: null }
+        { name: '国産 豚ロース生姜焼き用 300g', price: 468, quantity: 1, isFood: true, category: 'お肉・魚', shelfLifeDays: 3 },
+        { name: '高原レタス 1玉', price: 128, quantity: 1, isFood: true, category: '野菜・果物', shelfLifeDays: 4 },
+        { name: '成分無調整牛乳 1000ml', price: 218, quantity: 1, isFood: true, category: '乳製品・飲料', shelfLifeDays: 6 },
+        { name: '超熟 6枚切', price: 168, quantity: 1, isFood: true, category: '主食', shelfLifeDays: 4 },
+        { name: 'お徳用たまご 10個入', price: 248, quantity: 1, isFood: true, category: 'お肉・魚', shelfLifeDays: 14 },
+        { name: 'キッチン泡ハイター 詰替', price: 198, quantity: 1, isFood: false, category: '日用品', shelfLifeDays: null }
       ]
     },
     {
@@ -860,10 +775,10 @@
       date: new Date().toISOString().split('T')[0],
       totalDiscount: 50,
       items: [
-        { name: 'からあげクン レギュラー', price: 248, quantity: 1, isFood: true, category: '惣菜・お弁当', calories: 220, shelfLifeDays: 1 },
-        { name: '金しゃりおにぎり 焼さけハラス', price: 246, quantity: 1, isFood: true, category: '主食', calories: 215, shelfLifeDays: 1 },
-        { name: 'プレミアムロールケーキ', price: 214, quantity: 1, isFood: true, category: 'お菓子・スイーツ', calories: 285, shelfLifeDays: 2 },
-        { name: '緑茶 600ml', price: 138, quantity: 1, isFood: true, category: '乳製品・飲料', calories: 0, shelfLifeDays: 90 }
+        { name: 'からあげクン レギュラー', price: 248, quantity: 1, isFood: true, category: '惣菜・お弁当', shelfLifeDays: 1 },
+        { name: '金しゃりおにぎり 焼さけハラス', price: 246, quantity: 1, isFood: true, category: '主食', shelfLifeDays: 1 },
+        { name: 'プレミアムロールケーキ', price: 214, quantity: 1, isFood: true, category: 'お菓子・スイーツ', shelfLifeDays: 2 },
+        { name: '緑茶 600ml', price: 138, quantity: 1, isFood: true, category: '乳製品・飲料', shelfLifeDays: 90 }
       ]
     },
     {
@@ -872,9 +787,9 @@
       date: new Date().toISOString().split('T')[0],
       totalDiscount: 180,
       items: [
-        { name: 'inバー プロテイン ベイクドチョコ', price: 170, quantity: 2, isFood: true, category: 'お菓子・スイーツ', calories: 418, shelfLifeDays: 120 },
-        { name: 'トマトジュース食塩無添加 900g', price: 238, quantity: 1, isFood: true, category: '乳製品・飲料', calories: 180, shelfLifeDays: 60 },
-        { name: 'バブ 薬用入浴剤 12錠', price: 428, quantity: 1, isFood: false, category: '日用品', calories: 0, shelfLifeDays: null }
+        { name: 'inバー プロテイン ベイクドチョコ', price: 170, quantity: 2, isFood: true, category: 'お菓子・スイーツ', shelfLifeDays: 120 },
+        { name: 'トマトジュース食塩無添加 900g', price: 238, quantity: 1, isFood: true, category: '乳製品・飲料', shelfLifeDays: 60 },
+        { name: 'バブ 薬用入浴剤 12錠', price: 428, quantity: 1, isFood: false, category: '日用品', shelfLifeDays: null }
       ]
     }
   ];
@@ -884,232 +799,95 @@
     const preset = DEMO_RECEIPTS[demoIndex % DEMO_RECEIPTS.length];
     const items = preset.items.map(i => ({ ...i }));
     const totalAmount = items.reduce((sum, i) => sum + (i.price * i.quantity), 0) - preset.totalDiscount;
-    const totalCalories = items.reduce((sum, i) => sum + (i.calories * i.quantity), 0);
-
     return {
       store: preset.store,
       date: preset.date,
       totalAmount,
       totalDiscount: preset.totalDiscount,
-      totalCalories,
       items
     };
   }
 
-  async function parseReceiptWithGemini(base64Image, mimeType = 'image/jpeg', apiKey = '') {
-    if (!apiKey) {
-      throw new Error('Gemini APIキーが設定されていません。');
-    }
-    const cleanBase64 = base64Image.replace(/^data:image\/[a-z]+;base64,/, '');
-
-    const candidateModels = [
-      'gemini-3.8-flash',
-      'gemini-2.5-flash',
-      'gemini-1.5-flash'
-    ];
-
-    const promptText = `レシートから店舗名(store), 日付(date: YYYY-MM-DD), 合計(totalAmount: 数値), 値引き(totalDiscount: 数値), items: [{name, price, quantity, isFood(真偽値), category, calories(食品の場合の推定kcal), shelfLifeDays(食品の消費目安日数)}] を抽出して純粋なJSONで返してください。`;
-
-    let lastError = null;
-
-    for (const modelName of candidateModels) {
-      try {
-        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
-
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{
-              parts: [
-                { text: promptText },
-                { inline_data: { mime_type: mimeType, data: cleanBase64 } }
-              ]
-            }],
-            generationConfig: { temperature: 0.1, responseMimeType: 'application/json' }
-          })
-        });
-
-        if (!response.ok) {
-          const err = await response.json().catch(() => ({}));
-          const errMsg = err.error?.message || response.statusText;
-          if (response.status === 404 || errMsg.includes('no longer available') || errMsg.includes('not found')) {
-            lastError = new Error(`Gemini APIエラー (${modelName}): ${errMsg}`);
-            continue;
-          }
-          throw new Error(`Gemini APIエラー: ${errMsg}`);
-        }
-
-        const data = await response.json();
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!text) {
-          throw new Error('AIから応答を受信できませんでした。画像が鮮明か確認してください。');
-        }
-
-        const parsed = JSON.parse(text);
-
-        const items = (parsed.items || []).map(item => {
-          let cal = Number(item.calories) || 0;
-          let isFood = item.isFood;
-          let shelfLife = item.shelfLifeDays;
-          let category = item.category || '食費';
-          if (isFood && cal === 0) {
-            const est = estimateFoodCalories(item.name);
-            cal = est.calories;
-            shelfLife = shelfLife || est.shelfLifeDays;
-          }
-          return {
-            name: item.name || '商品',
-            price: Number(item.price) || 0,
-            quantity: Number(item.quantity) || 1,
-            isFood: !!isFood,
-            category,
-            calories: cal,
-            shelfLifeDays: shelfLife || 3
-          };
-        });
-
-        const totalAmount = Number(parsed.totalAmount) || items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
-        const totalCalories = items.reduce((sum, i) => sum + (i.calories * i.quantity), 0);
-
-        return {
-          store: parsed.store || '店舗不明',
-          date: parsed.date || new Date().toISOString().split('T')[0],
-          totalAmount,
-          totalDiscount: Number(parsed.totalDiscount) || 0,
-          totalCalories,
-          items
-        };
-      } catch (err) {
-        lastError = err;
-        if (err.message && (err.message.includes('no longer available') || err.message.includes('not found'))) {
-          continue;
-        }
-        throw err;
-      }
-    }
-
-    throw lastError || new Error('利用可能なGeminiモデルが見つかりませんでした。');
-  }
-
   /* ==========================================================================
-     4. グラフ可視化モジュール (Chart.js)
+     5. Chart.js 可視化モジュール
      ========================================================================== */
   let timelineChartInstance = null;
-  let calorieBreakdownChartInstance = null;
   let expenseBreakdownChartInstance = null;
 
+  const CATEGORY_COLORS = {
+    '主食': '#10B981',
+    'お肉・魚': '#F43F5E',
+    '野菜・果物': '#84CC16',
+    '乳製品・飲料': '#06B6D4',
+    '惣菜・お弁当': '#F59E0B',
+    'お菓子・スイーツ': '#EC4899',
+    '日用品': '#8B5CF6',
+    '外食': '#EF4444',
+    'その他': '#94A3B8'
+  };
+
   function renderCharts(stats) {
-    if (!window.Chart) return;
     renderTimelineChart(stats);
-    renderCalorieBreakdownChart(stats);
     renderExpenseBreakdownChart(stats);
+    renderCategoryList(stats);
+    renderStoreRanking(stats);
   }
 
   function renderTimelineChart(stats) {
     const canvas = document.getElementById('timeline-chart');
     if (!canvas || !window.Chart) return;
-    if (timelineChartInstance) timelineChartInstance.destroy();
+
+    if (timelineChartInstance) {
+      timelineChartInstance.destroy();
+    }
 
     const ctx = canvas.getContext('2d');
-    const expenseGrad = ctx.createLinearGradient(0, 0, 0, 240);
-    expenseGrad.addColorStop(0, 'rgba(16, 185, 129, 0.45)');
-    expenseGrad.addColorStop(1, 'rgba(16, 185, 129, 0.02)');
+    const expenseGrad = ctx.createLinearGradient(0, 0, 0, 220);
+    expenseGrad.addColorStop(0, 'rgba(16, 185, 129, 0.7)');
+    expenseGrad.addColorStop(1, 'rgba(16, 185, 129, 0.15)');
 
     timelineChartInstance = new window.Chart(ctx, {
       type: 'bar',
       data: {
         labels: stats.timeline.labels,
-        datasets: [
-          {
-            label: '支出 (円)',
-            data: stats.timeline.expenses,
-            backgroundColor: expenseGrad,
-            borderColor: '#10B981',
-            borderWidth: 2,
-            borderRadius: 6,
-            yAxisID: 'yExpense',
-            order: 2
-          },
-          {
-            type: 'line',
-            label: 'カロリー (kcal)',
-            data: stats.timeline.calories,
-            borderColor: '#F59E0B',
-            backgroundColor: '#F59E0B',
-            pointBackgroundColor: '#F59E0B',
-            pointBorderColor: '#FFFFFF',
-            pointBorderWidth: 2,
-            pointRadius: 4,
-            borderWidth: 2.5,
-            tension: 0.35,
-            yAxisID: 'yCalorie',
-            order: 1
-          }
-        ]
+        datasets: [{
+          label: '支出 (円)',
+          data: stats.timeline.expenses,
+          backgroundColor: expenseGrad,
+          borderColor: '#10B981',
+          borderWidth: 2,
+          borderRadius: 6,
+          hoverBackgroundColor: '#10B981'
+        }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        interaction: { mode: 'index', intersect: false },
         plugins: {
-          legend: {
-            position: 'top',
-            labels: { boxWidth: 12, usePointStyle: true, font: { size: 11 } }
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: 'rgba(15, 23, 42, 0.9)',
+            padding: 10,
+            titleFont: { size: 12, weight: 'bold' },
+            bodyFont: { size: 12 },
+            cornerRadius: 8,
+            callbacks: {
+              label: (ctx) => ` 支出: ¥${(ctx.parsed.y || 0).toLocaleString()}`
+            }
           }
         },
         scales: {
-          x: { grid: { display: false }, ticks: { font: { size: 10 } } },
-          yExpense: {
+          x: { grid: { display: false }, ticks: { color: '#94A3B8', font: { size: 10 } } },
+          y: {
             type: 'linear',
-            position: 'left',
+            beginAtZero: true,
+            grid: { color: 'rgba(226, 232, 240, 0.6)' },
             ticks: {
+              color: '#64748B',
               font: { size: 10 },
               callback: (v) => '¥' + (v >= 1000 ? (v / 1000) + 'k' : v)
             }
-          },
-          yCalorie: {
-            type: 'linear',
-            position: 'right',
-            grid: { drawOnChartArea: false },
-            ticks: {
-              font: { size: 10 },
-              callback: (v) => (v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v) + 'c'
-            }
           }
-        }
-      }
-    });
-  }
-
-  function renderCalorieBreakdownChart(stats) {
-    const canvas = document.getElementById('calorie-breakdown-chart');
-    if (!canvas || !window.Chart) return;
-    if (calorieBreakdownChartInstance) calorieBreakdownChartInstance.destroy();
-
-    const entries = Object.entries(stats.calorieByCategory || {});
-    let labels = entries.map(([k]) => k);
-    let data = entries.map(([, v]) => v);
-
-    if (data.length === 0 || data.every(v => v === 0)) {
-      labels = ['データなし'];
-      data = [1];
-    }
-
-    const colors = ['#F59E0B', '#EF4444', '#10B981', '#3B82F6', '#8B5CF6', '#EC4899', '#64748B'];
-    const ctx = canvas.getContext('2d');
-    calorieBreakdownChartInstance = new window.Chart(ctx, {
-      type: 'doughnut',
-      data: {
-        labels,
-        datasets: [{ data, backgroundColor: colors.slice(0, labels.length), borderWidth: 2 }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        cutout: '70%',
-        plugins: {
-          legend: { position: 'right', labels: { boxWidth: 10, usePointStyle: true, font: { size: 10 } } }
         }
       }
     });
@@ -1118,38 +896,130 @@
   function renderExpenseBreakdownChart(stats) {
     const canvas = document.getElementById('expense-breakdown-chart');
     if (!canvas || !window.Chart) return;
-    if (expenseBreakdownChartInstance) expenseBreakdownChartInstance.destroy();
 
-    const entries = Object.entries(stats.categoryTotals || {});
+    if (expenseBreakdownChartInstance) {
+      expenseBreakdownChartInstance.destroy();
+    }
+
+    const entries = Object.entries(stats.categoryTotals || {}).filter(([, v]) => v > 0);
+    entries.sort((a, b) => b[1] - a[1]);
+
     let labels = entries.map(([k]) => k);
     let data = entries.map(([, v]) => v);
 
-    if (data.length === 0 || data.every(v => v === 0)) {
+    if (data.length === 0) {
       labels = ['支出なし'];
       data = [1];
     }
 
-    const colors = ['#10B981', '#06B6D4', '#6366F1', '#F43F5E', '#EAB308', '#8B5CF6', '#94A3B8'];
+    const colors = labels.map(label => CATEGORY_COLORS[label] || '#94A3B8');
     const ctx = canvas.getContext('2d');
+
     expenseBreakdownChartInstance = new window.Chart(ctx, {
       type: 'doughnut',
       data: {
         labels,
-        datasets: [{ data, backgroundColor: colors.slice(0, labels.length), borderWidth: 2 }]
+        datasets: [{
+          data,
+          backgroundColor: colors,
+          borderWidth: 2,
+          borderColor: '#FFFFFF',
+          hoverOffset: 4
+        }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         cutout: '70%',
         plugins: {
-          legend: { position: 'right', labels: { boxWidth: 10, usePointStyle: true, font: { size: 10 } } }
+          legend: {
+            position: 'right',
+            labels: {
+              boxWidth: 10,
+              usePointStyle: true,
+              color: '#64748B',
+              font: { size: 11, weight: '600' }
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => {
+                const label = ctx.label || '';
+                const val = ctx.parsed || 0;
+                const total = data.reduce((a, b) => a + b, 0);
+                const pct = total > 0 ? Math.round((val / total) * 100) : 0;
+                return ` ${label}: ¥${val.toLocaleString()} (${pct}%)`;
+              }
+            }
+          }
         }
       }
     });
   }
 
+  function renderCategoryList(stats) {
+    const container = document.getElementById('stats-category-list');
+    if (!container) return;
+
+    const entries = Object.entries(stats.categoryTotals || {}).filter(([, v]) => v > 0);
+    entries.sort((a, b) => b[1] - a[1]);
+
+    if (entries.length === 0) {
+      container.innerHTML = `<div style="text-align: center; color: var(--text-muted); font-size: 12px; padding: 12px;">データがありません</div>`;
+      return;
+    }
+
+    const total = stats.totalExpense || 1;
+
+    container.innerHTML = entries.map(([cat, amount]) => {
+      const color = CATEGORY_COLORS[cat] || '#94A3B8';
+      const pct = Math.round((amount / total) * 100);
+      return `
+        <div class="stats-cat-item">
+          <div class="stats-cat-left">
+            <span class="stats-cat-badge-dot" style="background-color: ${color};"></span>
+            <span>${cat}</span>
+          </div>
+          <div class="stats-cat-right">
+            <span class="stats-cat-amount">¥${amount.toLocaleString()}</span>
+            <span class="stats-cat-pct">(${pct}%)</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function renderStoreRanking(stats) {
+    const container = document.getElementById('stats-store-ranking-list');
+    if (!container) return;
+
+    const entries = Object.entries(stats.storeTotals || {}).filter(([, d]) => d.amount > 0);
+    entries.sort((a, b) => b[1].amount - a[1].amount);
+
+    if (entries.length === 0) {
+      container.innerHTML = `<div style="text-align: center; color: var(--text-muted); font-size: 12px; padding: 12px;">店舗記録がありません</div>`;
+      return;
+    }
+
+    const top5 = entries.slice(0, 5);
+
+    container.innerHTML = top5.map(([storeName, data], idx) => {
+      const rankClass = idx === 0 ? 'top1' : idx === 1 ? 'top2' : idx === 2 ? 'top3' : '';
+      return `
+        <div class="stats-store-item">
+          <div class="stats-store-info">
+            <span class="stats-store-rank ${rankClass}">${idx + 1}</span>
+            <span class="stats-store-name">${storeName}</span>
+            <span class="stats-store-count">(${data.count}回)</span>
+          </div>
+          <div class="stats-store-amount">¥${data.amount.toLocaleString()}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
   /* ==========================================================================
-     5. UI コントローラー & イベント管理
+     6. UIコントローラー (AppUI)
      ========================================================================== */
   class AppUI {
     constructor() {
@@ -1168,133 +1038,57 @@
     }
 
     bindEvents() {
-      // ナビゲーション切り替え
-      document.querySelectorAll('.nav-item').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          const tab = e.currentTarget.dataset.tab;
-          if (tab) this.switchTab(tab);
-        });
-      });
-
-      // 期間切り替えピル (日別 / 月別 / 累計)
-      document.querySelectorAll('.period-pill').forEach(pill => {
-        pill.addEventListener('click', (e) => {
-          document.querySelectorAll('.period-pill').forEach(p => p.classList.remove('active'));
-          e.currentTarget.classList.add('active');
-          this.currentPeriod = e.currentTarget.dataset.period;
-          this.renderStats();
-        });
-      });
-
-      // レシートスキャン: ファイル選択
-      const receiptInput = document.getElementById('receipt-file-input');
-      if (receiptInput) {
-        receiptInput.addEventListener('change', (e) => this.handleReceiptUpload(e));
+      const fileInput = document.getElementById('receipt-file-input');
+      if (fileInput) {
+        fileInput.addEventListener('change', (e) => this.handleReceiptUpload(e));
       }
 
-      // デモスキャン実行ボタン
-      const demoScanBtn = document.getElementById('demo-scan-btn');
-      if (demoScanBtn) {
-        demoScanBtn.addEventListener('click', () => this.handleDemoScan());
-      }
-
-      // 手入力モーダル起動
-      const manualBtn = document.getElementById('open-manual-btn');
-      if (manualBtn) {
-        manualBtn.addEventListener('click', () => this.openManualModal());
-      }
-
-      // 手入力モーダル内の品目追加
-      const addItemBtn = document.getElementById('manual-add-item-btn');
-      if (addItemBtn) {
-        addItemBtn.addEventListener('click', () => this.addManualItemRow());
-      }
-
-      // 手入力フォーム保存
-      const manualForm = document.getElementById('manual-entry-form');
-      if (manualForm) {
-        manualForm.addEventListener('submit', (e) => this.handleManualSubmit(e));
-      }
-
-      // スキャン確認モーダルの写真サムネイル拡大
-      const draftPreviewImg = document.getElementById('draft-image-preview');
-      if (draftPreviewImg) {
-        draftPreviewImg.addEventListener('click', () => {
-          if (this.scannedDraft && this.scannedDraft.receiptImage) {
-            this.showImageModal(this.scannedDraft.receiptImage, `${this.scannedDraft.date} ${this.scannedDraft.store}`);
-          }
-        });
-      }
-
-      // スキャン結果保存
       const saveScanBtn = document.getElementById('save-scan-btn');
       if (saveScanBtn) {
-        saveScanBtn.addEventListener('click', () => this.saveScanDraft());
+        saveScanBtn.addEventListener('click', () => this.handleSaveScannedDraft());
       }
 
-      // スキャンキャンセル
       const cancelScanBtn = document.getElementById('cancel-scan-btn');
       if (cancelScanBtn) {
         cancelScanBtn.addEventListener('click', () => this.closeScanModal());
       }
 
-      // モーダル閉じるボタン
-      document.querySelectorAll('.modal-close-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          const modal = e.currentTarget.closest('.modal-overlay');
-          if (modal) modal.classList.remove('active');
-        });
-      });
-
-      // 記録・アイテム編集フォーム
-      const editTxForm = document.getElementById('edit-tx-form');
-      if (editTxForm) {
-        editTxForm.addEventListener('submit', (e) => this.handleEditTxSubmit(e));
+      const manualForm = document.getElementById('manual-entry-form');
+      if (manualForm) {
+        manualForm.addEventListener('submit', (e) => this.handleManualSubmit(e));
       }
 
-      // 記録編集内の品目追加
+      const manualAddBtn = document.getElementById('manual-add-item-btn');
+      if (manualAddBtn) {
+        manualAddBtn.addEventListener('click', () => this.addManualItemRow());
+      }
+
+      const editForm = document.getElementById('edit-tx-form');
+      if (editForm) {
+        editForm.addEventListener('submit', (e) => this.handleEditTxSubmit(e));
+      }
+
       const editAddBtn = document.getElementById('edit-tx-add-item-btn');
       if (editAddBtn) {
         editAddBtn.addEventListener('click', () => this.addEditTxItemRow());
       }
 
-      // 記録編集内の値引き変更時サマリー更新
-      const editDiscount = document.getElementById('edit-tx-discount');
-      if (editDiscount) {
-        editDiscount.addEventListener('input', () => this.updateEditTxSummary());
-      }
-
-      // 設定フォーム
       const settingsForm = document.getElementById('settings-form');
       if (settingsForm) {
         settingsForm.addEventListener('submit', (e) => {
           e.preventDefault();
           const apiKey = document.getElementById('cfg-api-key').value.trim();
           const budget = Number(document.getElementById('cfg-budget').value) || 75000;
-          const calTarget = Number(document.getElementById('cfg-cal-target').value) || 2200;
           const savePhoto = document.getElementById('cfg-save-photo') ? document.getElementById('cfg-save-photo').checked : false;
           store.saveSettings({
             geminiApiKey: apiKey,
             monthlyBudget: budget,
-            dailyCalorieTarget: calTarget,
             saveReceiptPhotos: savePhoto
           });
           this.showToast('設定を保存しました✨');
         });
       }
 
-      // データリセットボタン
-      const resetBtn = document.getElementById('reset-data-btn');
-      if (resetBtn) {
-        resetBtn.addEventListener('click', () => {
-          if (confirm('すべての取引履歴をデモデータの初期状態に戻しますか？')) {
-            localStorage.clear();
-            location.reload();
-          }
-        });
-      }
-
-      // PCフレームトグル
       const toggleFrameBtn = document.getElementById('toggle-frame-btn');
       if (toggleFrameBtn) {
         toggleFrameBtn.addEventListener('click', () => {
@@ -1306,37 +1100,24 @@
           if (window.lucide) window.lucide.createIcons();
         });
       }
-    }
 
-    switchTab(tabName) {
-      this.currentTab = tabName;
-      document.querySelectorAll('.nav-item').forEach(item => {
-        item.classList.toggle('active', item.dataset.tab === tabName);
+      document.querySelectorAll('.modal-overlay').forEach(modal => {
+        modal.addEventListener('click', (e) => {
+          if (e.target === modal) {
+            modal.classList.remove('active');
+          }
+        });
+        modal.querySelectorAll('.modal-close-btn').forEach(btn => {
+          btn.addEventListener('click', () => modal.classList.remove('active'));
+        });
       });
-
-      document.querySelectorAll('.screen-view').forEach(screen => {
-        screen.classList.toggle('active', screen.id === `screen-${tabName}`);
-      });
-
-      if (tabName === 'stats' || tabName === 'home') {
-        this.renderStats();
-      }
-      if (tabName === 'fridge') {
-        this.renderFridge();
-      }
-      if (tabName === 'history') {
-        this.renderHistory();
-      }
-
-      const scrollArea = document.querySelector('.app-content-scroll');
-      if (scrollArea) scrollArea.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     renderAll() {
       this.renderHome();
-      this.renderStats();
       this.renderFridge();
       this.renderHistory();
+      this.renderStats();
       this.renderSettings();
       if (window.lucide) window.lucide.createIcons();
     }
@@ -1351,9 +1132,12 @@
       const monthSpendSubEl = document.getElementById('home-month-spend-sub');
       const budgetRemainEl = document.getElementById('home-budget-remaining');
       const budgetBarEl = document.getElementById('home-budget-bar');
+      const budgetTargetLabel = document.getElementById('home-budget-target-label');
 
       if (monthSpendEl) monthSpendEl.textContent = `¥${stats.totalExpense.toLocaleString()}`;
       if (monthSpendSubEl) monthSpendSubEl.textContent = `¥${stats.totalExpense.toLocaleString()}`;
+      if (budgetTargetLabel) budgetTargetLabel.textContent = `予算目標: ¥${budget.toLocaleString()}`;
+
       if (budgetRemainEl) {
         budgetRemainEl.textContent = remaining >= 0 ? `残り ¥${remaining.toLocaleString()}` : `超過 ¥${Math.abs(remaining).toLocaleString()}`;
         budgetRemainEl.style.color = remaining >= 0 ? '#10B981' : '#EF4444';
@@ -1363,12 +1147,35 @@
         budgetBarEl.style.backgroundColor = progress > 90 ? '#EF4444' : progress > 75 ? '#F59E0B' : '#10B981';
       }
 
-      const totalCalEl = document.getElementById('home-total-calories');
-      const avgCalEl = document.getElementById('home-avg-calories');
-      const calPer100El = document.getElementById('home-cal-per-100');
-      if (totalCalEl) totalCalEl.textContent = `${stats.totalCalories.toLocaleString()} kcal`;
-      if (avgCalEl) avgCalEl.textContent = `日平均: ${stats.averageDailyCalories.toLocaleString()} kcal`;
-      if (calPer100El) calPer100El.textContent = `${stats.calPer100Yen} kcal / 100円`;
+      const shopCountEl = document.getElementById('home-shopping-count');
+      const avgShopEl = document.getElementById('home-avg-spend-per-shop');
+      if (shopCountEl) shopCountEl.textContent = `${stats.transactionCount} 回`;
+      if (avgShopEl) avgShopEl.textContent = `1回平均: ¥${stats.avgSpendPerShop.toLocaleString()}`;
+
+      const topCatListEl = document.getElementById('home-top-categories-list');
+      if (topCatListEl) {
+        if (!stats.topCategories || stats.topCategories.length === 0) {
+          topCatListEl.innerHTML = `<div style="font-size: 11px; color: var(--text-muted); text-align: center; padding: 6px;">今月の支出データがありません</div>`;
+        } else {
+          topCatListEl.innerHTML = stats.topCategories.map(cat => {
+            const color = CATEGORY_COLORS[cat.name] || '#94A3B8';
+            return `
+              <div class="top-cat-item">
+                <div class="top-cat-meta">
+                  <span class="top-cat-name">
+                    <span class="top-cat-dot" style="background-color: ${color};"></span>
+                    ${cat.name}
+                  </span>
+                  <span class="top-cat-amount">¥${cat.amount.toLocaleString()} <small style="font-size: 10px; color: var(--text-muted); font-weight: normal;">(${cat.pct}%)</small></span>
+                </div>
+                <div class="top-cat-bar-bg">
+                  <div class="top-cat-bar-fill" style="width: ${cat.pct}%; background-color: ${color};"></div>
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
+      }
 
       const discountEl = document.getElementById('home-discount-total');
       if (discountEl) discountEl.textContent = `¥${stats.totalDiscount.toLocaleString()}`;
@@ -1379,7 +1186,7 @@
         if (recent.length === 0) {
           recentList.innerHTML = `<div class="empty-state">まだ記録がありません。「レシート撮影」または「手入力」から追加してみましょう！</div>`;
         } else {
-          recentList.innerHTML = recent.map(tx => this.createTransactionCardHtml(tx, true)).join('');
+          recentList.innerHTML = recent.map(tx => this.createTransactionCardHtml(tx)).join('');
         }
       }
 
@@ -1394,7 +1201,7 @@
               <span class="alert-title">賞味期限が近い食材が ${urgent.length}品 あります</span>
               <span class="alert-desc">${urgent.map(u => u.name).slice(0, 2).join('、')}${urgent.length > 2 ? ' など' : ''} を早めに使い切りましょう！</span>
             </div>
-            <button class="alert-action-btn" onclick="window.appUI.switchTab('fridge')">見る</button>
+            <button class="alert-action-btn" onclick="document.querySelector('[data-tab=fridge]').click()">見る</button>
           `;
         } else {
           fridgeAlertBox.style.display = 'none';
@@ -1404,6 +1211,7 @@
 
     renderStats() {
       const stats = store.getStats(this.currentPeriod);
+
       const periodTitleEl = document.getElementById('stats-period-title');
       if (periodTitleEl) {
         if (this.currentPeriod === 'daily') {
@@ -1416,14 +1224,14 @@
       }
 
       const statExpenseEl = document.getElementById('stat-total-expense');
-      const statCalorieEl = document.getElementById('stat-total-calorie');
-      const statAvgCalEl = document.getElementById('stat-avg-calorie');
+      const statAvgExpenseEl = document.getElementById('stat-avg-expense');
+      const statDiscountEl = document.getElementById('stat-discount-total');
       const statCountEl = document.getElementById('stat-record-count');
 
       if (statExpenseEl) statExpenseEl.textContent = `¥${stats.totalExpense.toLocaleString()}`;
-      if (statCalorieEl) statCalorieEl.textContent = `${stats.totalCalories.toLocaleString()} kcal`;
-      if (statAvgCalEl) statAvgCalEl.textContent = `${stats.averageDailyCalories.toLocaleString()} kcal/日`;
-      if (statCountEl) statCountEl.textContent = `${stats.transactionCount} 件`;
+      if (statAvgExpenseEl) statAvgExpenseEl.textContent = `¥${stats.avgSpendPerShop.toLocaleString()}`;
+      if (statDiscountEl) statDiscountEl.textContent = `累計節約: ¥${stats.totalDiscount.toLocaleString()}`;
+      if (statCountEl) statCountEl.textContent = `${stats.transactionCount} 件の記録`;
 
       renderCharts(stats);
     }
@@ -1471,7 +1279,6 @@
             <div class="fridge-info" onclick="window.appUI.toggleFridge('${item.id}')">
               <div class="fridge-name">${this.escapeHtml(item.name)}</div>
               <div class="fridge-meta">
-                <span class="fridge-cal">${item.calories ? item.calories + ' kcal' : '食品'}</span>
                 <span class="fridge-cat">${item.category}</span>
               </div>
             </div>
@@ -1498,6 +1305,24 @@
       if (window.lucide) window.lucide.createIcons();
     }
 
+    clearFridgeConsumed() {
+      store.fridgeItems = store.fridgeItems.filter(f => !f.isConsumed);
+      store.saveFridge();
+      this.renderFridge();
+      this.renderHome();
+      this.showToast('消費済みの食品を整理しました');
+    }
+
+    clearAllFridge() {
+      if (confirm('冷蔵庫を空にしますか？')) {
+        store.fridgeItems = [];
+        store.saveFridge();
+        this.renderFridge();
+        this.renderHome();
+        this.showToast('冷蔵庫を空にしました');
+      }
+    }
+
     renderHistory() {
       const listEl = document.getElementById('history-list');
       if (!listEl) return;
@@ -1510,13 +1335,13 @@
       listEl.innerHTML = store.transactions.map(tx => this.createTransactionCardHtml(tx, true)).join('');
     }
 
-    createTransactionCardHtml(tx, showDelete = true) {
+    createTransactionCardHtml(tx, showDelete = false) {
       const dateFormatted = tx.date.split('-').slice(1).join('/');
       const hasDiscount = tx.totalDiscount > 0;
       const items = tx.items || [];
 
       return `
-        <div class="tx-card" id="card-${tx.id}">
+        <div class="tx-card">
           <div class="tx-card-header">
             <div class="tx-header-left">
               <span class="tx-date">${dateFormatted}</span>
@@ -1536,8 +1361,8 @@
           </div>
 
           <div class="tx-badges">
-            <span class="pill-badge cal-badge">
-              <i data-lucide="flame"></i> ${tx.totalCalories.toLocaleString()} kcal
+            <span class="pill-badge count-badge">
+              <i data-lucide="shopping-cart"></i> ${items.length}品
             </span>
             <span class="pill-badge cat-badge">${tx.category}</span>
             ${hasDiscount ? `
@@ -1556,7 +1381,6 @@
             ${items.map((i, idx) => `
               <span class="tx-item-chip ${idx >= 3 ? 'item-hidden' : ''}" style="${idx >= 3 ? 'display: none;' : ''}" onclick="event.stopPropagation(); window.appUI.openEditTxModal('${tx.id}')" title="タップして品目を編集">
                 ${this.escapeHtml(i.name)}
-                ${i.isFood && i.calories ? `<small>(${i.calories}c)</small>` : ''}
                 <span class="chip-delete-btn" onclick="event.stopPropagation(); window.appUI.deleteTxItem('${tx.id}', '${i.id}', '${this.escapeHtml(i.name)}')" title="この品目を削除">×</span>
               </span>
             `).join('')}
@@ -1581,71 +1405,37 @@
       });
 
       if (moreBtn) {
-        moreBtn.textContent = isCurrentlyHidden ? '閉じる ▲' : `+他${hiddenItems.length}品を表示`;
+        moreBtn.textContent = isCurrentlyHidden ? '閉じる' : `+他${hiddenItems.length}品を表示`;
       }
     }
 
     deleteTx(id) {
-      if (confirm('この記録をすべて削除しますか？')) {
+      if (confirm('この記録を削除しますか？')) {
         store.deleteTransaction(id);
         this.showToast('記録を削除しました');
+        this.renderHome();
+        this.renderHistory();
+        this.renderStats();
       }
     }
 
     deleteTxItem(txId, itemId, itemName) {
-      if (confirm(`品目「${itemName}」をこの記録から削除しますか？`)) {
+      if (confirm(`「${itemName}」を削除しますか？`)) {
         store.deleteTransactionItem(txId, itemId);
         this.showToast(`「${itemName}」を削除しました`);
-      }
-    }
-
-    clearFridgeConsumed() {
-      const count = store.fridgeItems.filter(f => f.isConsumed).length;
-      if (count === 0) {
-        alert('消費済みのアイテムはありません。');
-        return;
-      }
-      if (confirm(`消費済みの食材 ${count}品 を冷蔵庫から削除しますか？`)) {
-        store.clearFridgeConsumed();
-        this.renderFridge();
         this.renderHome();
-        this.showToast('消費済みの食材を削除しました');
-      }
-    }
-
-    clearAllFridge() {
-      if (store.fridgeItems.length === 0) return;
-      if (confirm('冷蔵庫ストックをすべて空にしますか？')) {
-        store.clearAllFridge();
-        this.renderFridge();
-        this.renderHome();
-        this.showToast('冷蔵庫を空にしました');
-      }
-    }
-
-    clearAllData() {
-      if (confirm('【注意】すべての家計簿データおよび冷蔵庫ストックを消去して空にしますか？\n（デモデータも消去され、0件から開始できます）')) {
-        store.clearAllData();
-        this.showToast('すべてのデータを初期化しました（0件）✨');
-      }
-    }
-
-    loadDemoData() {
-      if (confirm('デモデータ（初期サンプルデータ）を読み込みますか？\n現在のデータは上書きされます。')) {
-        store.loadDemoData();
-        this.showToast('デモデータを読み込みました✨');
+        this.renderHistory();
+        this.renderStats();
       }
     }
 
     renderSettings() {
       const apiKeyInput = document.getElementById('cfg-api-key');
       const budgetInput = document.getElementById('cfg-budget');
-      const calTargetInput = document.getElementById('cfg-cal-target');
       const savePhotoInput = document.getElementById('cfg-save-photo');
 
       if (apiKeyInput) apiKeyInput.value = store.settings.geminiApiKey || '';
       if (budgetInput) budgetInput.value = store.settings.monthlyBudget || 75000;
-      if (calTargetInput) calTargetInput.value = store.settings.dailyCalorieTarget || 2200;
       if (savePhotoInput) savePhotoInput.checked = !!store.settings.saveReceiptPhotos;
     }
 
@@ -1656,24 +1446,33 @@
       this.showScanningOverlay();
 
       try {
-        // スマホカメラの高画質写真（数MB〜10MB）をCanvasで軽量化圧縮（約70〜100KB）
-        // これにより通信が高速化し、LocalStorageの容量上限エラーを完全に防ぎます
         const base64 = await this.compressImage(file, 1200, 0.8) || await this.fileToBase64(file);
         const apiKey = store.settings.geminiApiKey;
 
-        let result;
+        let parsedData = null;
         if (apiKey) {
-          result = await parseReceiptWithGemini(base64, 'image/jpeg', apiKey);
+          try {
+            parsedData = await parseReceiptWithGemini(base64, file.type, apiKey);
+          } catch (geminiErr) {
+            console.warn('Gemini API call failed, falling back to smart simulation:', geminiErr);
+            this.showToast('API通信に失敗したため、デモ抽出モードで起動します');
+            parsedData = await simulateReceiptScan(this.selectedDemoIndex++);
+          }
         } else {
-          result = await simulateReceiptScan(this.selectedDemoIndex++);
-          this.showToast('※APIキー未設定のためデモAI認識を実行しました', 3500);
+          parsedData = await simulateReceiptScan(this.selectedDemoIndex++);
         }
 
+        this.scannedDraft = {
+          ...parsedData,
+          receiptImage: base64,
+          receiptMime: file.type
+        };
+
         this.hideScanningOverlay();
-        this.openScanResultModal(result, base64);
+        this.openScanResultModal();
       } catch (err) {
         this.hideScanningOverlay();
-        alert(err.message || 'レシートの読み取りに失敗しました。');
+        alert('レシートの読み込みに失敗しました: ' + err.message);
       } finally {
         e.target.value = '';
       }
@@ -1682,47 +1481,36 @@
     async handleDemoScan() {
       this.showScanningOverlay();
       try {
-        const result = await simulateReceiptScan(this.selectedDemoIndex++);
+        const parsedData = await simulateReceiptScan(this.selectedDemoIndex++);
+        this.scannedDraft = {
+          ...parsedData,
+          receiptImage: null
+        };
         this.hideScanningOverlay();
-        this.openScanResultModal(result, null);
+        this.openScanResultModal();
       } catch (err) {
         this.hideScanningOverlay();
-        alert('デモ解析エラー');
+        alert('デモスキャンに失敗しました: ' + err.message);
       }
     }
 
-    showScanningOverlay() {
-      const overlay = document.getElementById('scanning-overlay');
-      if (overlay) overlay.classList.add('active');
-    }
-
-    hideScanningOverlay() {
-      const overlay = document.getElementById('scanning-overlay');
-      if (overlay) overlay.classList.remove('active');
-    }
-
-    openScanResultModal(data, imageBase64) {
-      this.scannedDraft = { ...data, receiptImage: imageBase64 };
-
+    openScanResultModal() {
       const modal = document.getElementById('scan-result-modal');
-      if (!modal) return;
+      if (!modal || !this.scannedDraft) return;
 
-      document.getElementById('draft-store').value = data.store;
-      document.getElementById('draft-date').value = data.date;
-      document.getElementById('draft-discount').value = data.totalDiscount || 0;
+      document.getElementById('draft-store').value = this.scannedDraft.store || '';
+      document.getElementById('draft-date').value = this.scannedDraft.date || new Date().toISOString().split('T')[0];
+      document.getElementById('draft-discount').value = this.scannedDraft.totalDiscount || 0;
 
-      const draftSavePhoto = document.getElementById('draft-save-photo');
-      if (draftSavePhoto) {
-        draftSavePhoto.checked = !!store.settings.saveReceiptPhotos;
-      }
-
-      // 撮影した写真のサムネイルを表示
       const previewWrap = document.getElementById('draft-image-preview-wrap');
       const previewImg = document.getElementById('draft-image-preview');
       if (previewWrap && previewImg) {
-        if (imageBase64) {
-          previewImg.src = imageBase64;
+        if (this.scannedDraft.receiptImage) {
+          previewImg.src = this.scannedDraft.receiptImage;
           previewWrap.style.display = 'block';
+          previewImg.onclick = () => {
+            this.showImageModal(this.scannedDraft.receiptImage, `${this.scannedDraft.store || 'レシート'} の原本写真`);
+          };
         } else {
           previewWrap.style.display = 'none';
         }
@@ -1738,13 +1526,10 @@
       if (!container || !this.scannedDraft) return;
 
       let totalAmount = 0;
-      let totalCalories = 0;
 
       container.innerHTML = this.scannedDraft.items.map((item, idx) => {
         const itemPrice = (item.price || 0) * (item.quantity || 1);
-        const itemCal = (item.calories || 0) * (item.quantity || 1);
         totalAmount += itemPrice;
-        totalCalories += itemCal;
 
         return `
           <div class="draft-item-row" data-index="${idx}">
@@ -1758,10 +1543,6 @@
               <div class="draft-field">
                 <label>金額(円)</label>
                 <input type="number" class="input-flat-num item-price" value="${item.price}" onchange="window.appUI.updateDraftItem(${idx}, 'price', this.value)">
-              </div>
-              <div class="draft-field">
-                <label>カロリー(kcal)</label>
-                <input type="number" class="input-flat-num item-cal" value="${item.calories}" onchange="window.appUI.updateDraftItem(${idx}, 'calories', this.value)">
               </div>
               <div class="draft-field">
                 <label>種別</label>
@@ -1784,13 +1565,12 @@
       const totalDiscount = Number(document.getElementById('draft-discount')?.value) || 0;
       const finalAmount = Math.max(0, totalAmount - totalDiscount);
       this.scannedDraft.totalAmount = finalAmount;
-      this.scannedDraft.totalCalories = totalCalories;
 
       const summaryEl = document.getElementById('draft-summary-badge');
       if (summaryEl) {
         summaryEl.innerHTML = `
           <span class="badge-total-price">合計: ¥${finalAmount.toLocaleString()}</span>
-          <span class="badge-total-cal"><i data-lucide="flame"></i> ${totalCalories.toLocaleString()} kcal</span>
+          <span class="badge-item-count" id="draft-item-count"><i data-lucide="shopping-cart"></i> ${this.scannedDraft.items.length} 品目</span>
         `;
       }
       if (window.lucide) window.lucide.createIcons();
@@ -1800,18 +1580,10 @@
       if (!this.scannedDraft || !this.scannedDraft.items[idx]) return;
       const item = this.scannedDraft.items[idx];
 
-      if (field === 'price' || field === 'calories') {
+      if (field === 'price') {
         item[field] = Number(value) || 0;
       } else if (field === 'name') {
         item.name = value;
-        if (item.calories === 0) {
-          const est = estimateFoodCalories(value);
-          if (est.isFood) {
-            item.calories = est.calories;
-            item.category = est.category;
-            item.isFood = true;
-          }
-        }
       } else if (field === 'category') {
         item.category = value;
         item.isFood = value !== '日用品' && value !== 'その他';
@@ -1821,34 +1593,42 @@
     }
 
     removeDraftItem(idx) {
-      if (!this.scannedDraft) return;
+      if (!this.scannedDraft || !this.scannedDraft.items) return;
       this.scannedDraft.items.splice(idx, 1);
       this.renderDraftItems();
     }
 
-    saveScanDraft() {
+    async handleSaveScannedDraft() {
       if (!this.scannedDraft) return;
 
-      const storeName = document.getElementById('draft-store').value.trim() || '店舗未登録';
+      const storeName = document.getElementById('draft-store').value.trim() || '店舗未記入';
       const date = document.getElementById('draft-date').value || new Date().toISOString().split('T')[0];
       const discount = Number(document.getElementById('draft-discount').value) || 0;
       const addToFridge = document.getElementById('draft-add-fridge').checked;
-      const draftSavePhoto = document.getElementById('draft-save-photo');
-      const shouldSavePhoto = draftSavePhoto ? draftSavePhoto.checked : !!store.settings.saveReceiptPhotos;
+      const savePhoto = document.getElementById('draft-save-photo') ? document.getElementById('draft-save-photo').checked : false;
 
-      this.scannedDraft.store = storeName;
-      this.scannedDraft.date = date;
-      this.scannedDraft.totalDiscount = discount;
-
-      // 写真保存OFFの場合は写真データを破棄（家計簿・カロリーデータのみ軽量保存）
-      if (!shouldSavePhoto) {
-        this.scannedDraft.receiptImage = null;
+      let imageId = null;
+      if (savePhoto && this.scannedDraft.receiptImage) {
+        imageId = 'img_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+        await ReceiptImageDB.saveImage(imageId, this.scannedDraft.receiptImage);
       }
 
-      store.addTransaction(this.scannedDraft, addToFridge);
+      const txRecord = {
+        store: storeName,
+        date,
+        totalAmount: this.scannedDraft.totalAmount,
+        totalDiscount: discount,
+        category: this.scannedDraft.items[0]?.category || 'その他',
+        items: this.scannedDraft.items,
+        memo: 'レシートAI自動解析による記録',
+        hasImage: !!imageId,
+        imageId: imageId
+      };
+
+      store.addTransaction(txRecord, addToFridge);
 
       this.closeScanModal();
-      this.showToast('家計簿に記録しました！カロリーも反映されました🔥');
+      this.showToast('レシートから家計簿に記録しました✨');
       this.switchTab('home');
     }
 
@@ -1878,7 +1658,7 @@
       if (window.lucide) window.lucide.createIcons();
     }
 
-    addManualItemRow(name = '', price = '', calories = '', category = '主食') {
+    addManualItemRow(name = '', price = '', category = '主食') {
       const container = document.getElementById('manual-items-container');
       if (!container) return;
 
@@ -1888,7 +1668,7 @@
       div.id = rowId;
       div.innerHTML = `
         <div class="manual-row-top">
-          <input type="text" class="input-food-name" placeholder="食品名 (例: おにぎり, 牛乳)" value="${this.escapeHtml(name)}">
+          <input type="text" class="input-food-name" placeholder="商品名 (例: 牛乳, パン, 洗剤)" value="${this.escapeHtml(name)}">
           <button type="button" class="btn-icon-subtle text-danger" onclick="document.getElementById('${rowId}').remove()" title="この品目を削除">
             <i data-lucide="minus-circle"></i>
           </button>
@@ -1897,10 +1677,6 @@
           <div class="manual-field">
             <span class="manual-field-label">金額(円)</span>
             <input type="number" class="input-food-price" placeholder="¥ 0" value="${price}">
-          </div>
-          <div class="manual-field">
-            <span class="manual-field-label">カロリー</span>
-            <input type="number" class="input-food-cal" placeholder="kcal" value="${calories}">
           </div>
           <div class="manual-field">
             <span class="manual-field-label">種別</span>
@@ -1916,33 +1692,7 @@
             </select>
           </div>
         </div>
-        <div class="calorie-suggestion" style="display: none;"></div>
       `;
-
-      const nameInput = div.querySelector('.input-food-name');
-      const calInput = div.querySelector('.input-food-cal');
-      const catSelect = div.querySelector('.input-food-cat');
-      const suggBox = div.querySelector('.calorie-suggestion');
-
-      nameInput.addEventListener('input', () => {
-        const query = nameInput.value.trim();
-        if (!query) {
-          suggBox.style.display = 'none';
-          return;
-        }
-        const est = estimateFoodCalories(query);
-        if (est.isFood) {
-          suggBox.style.display = 'flex';
-          suggBox.innerHTML = `<span>💡 推定: <strong>${est.calories} kcal</strong> (${est.unit || est.category})</span> <button type="button" class="btn-apply-sugg">適用</button>`;
-          suggBox.querySelector('.btn-apply-sugg').onclick = () => {
-            calInput.value = est.calories;
-            catSelect.value = est.category;
-            suggBox.style.display = 'none';
-          };
-        } else {
-          suggBox.style.display = 'none';
-        }
-      });
 
       container.appendChild(div);
       if (window.lucide) window.lucide.createIcons();
@@ -1963,7 +1713,6 @@
       rows.forEach(row => {
         const name = row.querySelector('.input-food-name').value.trim();
         const price = Number(row.querySelector('.input-food-price').value) || 0;
-        const calories = Number(row.querySelector('.input-food-cal').value) || 0;
         const category = row.querySelector('.input-food-cat').value;
 
         if (name || price > 0) {
@@ -1971,11 +1720,9 @@
           items.push({
             name: name || '支出品目',
             price,
-            quantity: 1,
             category,
             isFood,
-            calories,
-            shelfLifeDays: isFood ? 4 : null
+            shelfLifeDays: 3
           });
         }
       });
@@ -1996,7 +1743,6 @@
           quantity: 1,
           category: '食費',
           isFood: true,
-          calories: 300,
           shelfLifeDays: 3
         });
       }
@@ -2013,107 +1759,6 @@
       document.getElementById('manual-modal').classList.remove('active');
       this.showToast('手入力で記録を保存しました✨');
       this.switchTab('home');
-    }
-
-    showToast(message, duration = 2500) {
-      const toast = document.getElementById('toast-notification');
-      if (!toast) return;
-      toast.textContent = message;
-      toast.classList.add('show');
-      setTimeout(() => {
-        toast.classList.remove('show');
-      }, duration);
-    }
-
-    compressImage(file, maxWidth = 1200, quality = 0.8) {
-      return new Promise((resolve) => {
-        if (!file || !file.type.startsWith('image/')) {
-          resolve(null);
-          return;
-        }
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const img = new Image();
-          img.onload = () => {
-            try {
-              let width = img.width;
-              let height = img.height;
-              if (width > maxWidth || height > maxWidth) {
-                if (width > height) {
-                  height = Math.round((height * maxWidth) / width);
-                  width = maxWidth;
-                } else {
-                  width = Math.round((width * maxWidth) / height);
-                  height = maxWidth;
-                }
-              }
-              const canvas = document.createElement('canvas');
-              canvas.width = width;
-              canvas.height = height;
-              const ctx = canvas.getContext('2d');
-              ctx.drawImage(img, 0, 0, width, height);
-              const compressed = canvas.toDataURL('image/jpeg', quality);
-              resolve(compressed);
-            } catch (err) {
-              console.warn('Image compression fallback:', err);
-              resolve(e.target.result);
-            }
-          };
-          img.onerror = () => resolve(e.target.result);
-          img.src = e.target.result;
-        };
-        reader.onerror = () => resolve(null);
-        reader.readAsDataURL(file);
-      });
-    }
-
-    async viewReceiptPhoto(txId) {
-      const modal = document.getElementById('receipt-photo-modal');
-      const imgEl = document.getElementById('receipt-photo-img');
-      const captionEl = document.getElementById('receipt-photo-caption');
-      const loadingEl = document.getElementById('receipt-photo-loading');
-      if (!modal || !imgEl) return;
-
-      const tx = store.transactions.find(t => t.id === txId);
-      if (captionEl) {
-        captionEl.textContent = tx ? `${tx.date} ${tx.store} (¥${tx.totalAmount.toLocaleString()})` : '';
-      }
-
-      imgEl.style.display = 'none';
-      if (loadingEl) loadingEl.style.display = 'block';
-      modal.classList.add('active');
-
-      let dataUrl = tx?.receiptImage || null;
-      if (!dataUrl) {
-        dataUrl = await ReceiptImageDB.getImage(txId);
-      }
-
-      if (loadingEl) loadingEl.style.display = 'none';
-      if (dataUrl) {
-        imgEl.src = dataUrl;
-        imgEl.style.display = 'inline-block';
-      } else {
-        if (captionEl) {
-          captionEl.textContent = 'レシート画像が見つかりませんでした（保存されていないか削除されました）';
-        }
-      }
-
-      if (window.lucide) window.lucide.createIcons();
-    }
-
-    showImageModal(dataUrl, title = '') {
-      const modal = document.getElementById('receipt-photo-modal');
-      const imgEl = document.getElementById('receipt-photo-img');
-      const captionEl = document.getElementById('receipt-photo-caption');
-      const loadingEl = document.getElementById('receipt-photo-loading');
-      if (!modal || !imgEl) return;
-
-      if (loadingEl) loadingEl.style.display = 'none';
-      if (captionEl) captionEl.textContent = title;
-      imgEl.src = dataUrl;
-      imgEl.style.display = 'inline-block';
-      modal.classList.add('active');
-      if (window.lucide) window.lucide.createIcons();
     }
 
     openEditTxModal(txId) {
@@ -2134,10 +1779,10 @@
 
       if (tx.items && tx.items.length > 0) {
         tx.items.forEach(item => {
-          this.addEditTxItemRow(item.name, item.price, item.calories, item.category);
+          this.addEditTxItemRow(item.name, item.price, item.category);
         });
       } else {
-        this.addEditTxItemRow('', tx.totalAmount, tx.totalCalories, tx.category);
+        this.addEditTxItemRow('', tx.totalAmount, tx.category);
       }
 
       this.updateEditTxSummary();
@@ -2145,7 +1790,7 @@
       if (window.lucide) window.lucide.createIcons();
     }
 
-    addEditTxItemRow(name = '', price = '', calories = '', category = '主食') {
+    addEditTxItemRow(name = '', price = '', category = '主食') {
       const container = document.getElementById('edit-tx-items-container');
       if (!container) return;
 
@@ -2155,7 +1800,7 @@
       div.id = rowId;
       div.innerHTML = `
         <div class="manual-row-top">
-          <input type="text" class="input-food-name" placeholder="食品名 (例: おにぎり, 牛乳)" value="${this.escapeHtml(name)}">
+          <input type="text" class="input-food-name" placeholder="商品名 (例: 牛乳, パン, 洗剤)" value="${this.escapeHtml(name)}">
           <button type="button" class="btn-icon-subtle text-danger" onclick="document.getElementById('${rowId}').remove(); window.appUI.updateEditTxSummary();" title="この品目を削除">
             <i data-lucide="minus-circle"></i>
           </button>
@@ -2164,10 +1809,6 @@
           <div class="manual-field">
             <span class="manual-field-label">金額(円)</span>
             <input type="number" class="input-food-price" placeholder="¥ 0" value="${price}">
-          </div>
-          <div class="manual-field">
-            <span class="manual-field-label">カロリー</span>
-            <input type="number" class="input-food-cal" placeholder="kcal" value="${calories}">
           </div>
           <div class="manual-field">
             <span class="manual-field-label">種別</span>
@@ -2186,24 +1827,8 @@
       `;
       container.appendChild(div);
 
-      const nameInput = div.querySelector('.input-food-name');
       const priceInput = div.querySelector('.input-food-price');
-      const calInput = div.querySelector('.input-food-cal');
-      const catSelect = div.querySelector('.input-food-cat');
-
-      nameInput.addEventListener('blur', () => {
-        if (!calInput.value && nameInput.value) {
-          const est = estimateFoodCalories(nameInput.value);
-          if (est.isFood) {
-            calInput.value = est.calories;
-            catSelect.value = est.category;
-            this.updateEditTxSummary();
-          }
-        }
-      });
-
       priceInput.addEventListener('input', () => this.updateEditTxSummary());
-      calInput.addEventListener('input', () => this.updateEditTxSummary());
 
       if (window.lucide) window.lucide.createIcons();
       this.updateEditTxSummary();
@@ -2215,21 +1840,19 @@
 
       const discount = Number(document.getElementById('edit-tx-discount')?.value) || 0;
       let totalAmount = 0;
-      let totalCalories = 0;
+      const rows = container.querySelectorAll('.manual-item-row');
 
-      container.querySelectorAll('.manual-item-row').forEach(row => {
+      rows.forEach(row => {
         const price = Number(row.querySelector('.input-food-price')?.value) || 0;
-        const cal = Number(row.querySelector('.input-food-cal')?.value) || 0;
         totalAmount += price;
-        totalCalories += cal;
       });
 
       const finalAmount = Math.max(0, totalAmount - discount);
       const priceEl = document.getElementById('edit-tx-summary-price');
-      const calEl = document.getElementById('edit-tx-summary-cal');
+      const countEl = document.getElementById('edit-tx-summary-count');
 
       if (priceEl) priceEl.textContent = `合計: ¥${finalAmount.toLocaleString()}`;
-      if (calEl) calEl.innerHTML = `<i data-lucide="flame"></i> ${totalCalories.toLocaleString()} kcal`;
+      if (countEl) countEl.innerHTML = `<i data-lucide="shopping-cart"></i> ${rows.length} 品`;
       if (window.lucide) window.lucide.createIcons();
     }
 
@@ -2247,14 +1870,12 @@
       document.querySelectorAll('#edit-tx-items-container .manual-item-row').forEach(row => {
         const name = row.querySelector('.input-food-name').value.trim();
         const price = Number(row.querySelector('.input-food-price').value) || 0;
-        const calories = Number(row.querySelector('.input-food-cal').value) || 0;
         const category = row.querySelector('.input-food-cat').value;
 
         if (name || price > 0) {
           items.push({
             name: name || '品目',
             price,
-            calories,
             category,
             isFood: category !== '日用品' && category !== 'その他'
           });
@@ -2283,6 +1904,135 @@
       this.renderStats();
     }
 
+    async viewReceiptPhoto(txId) {
+      const tx = store.transactions.find(t => t.id === txId);
+      if (!tx) return;
+
+      const modal = document.getElementById('receipt-photo-modal');
+      const img = document.getElementById('receipt-photo-img');
+      const loading = document.getElementById('receipt-photo-loading');
+      const caption = document.getElementById('receipt-photo-caption');
+
+      if (!modal || !img) return;
+
+      img.style.display = 'none';
+      if (loading) loading.style.display = 'block';
+      if (caption) caption.textContent = `${tx.date} ${tx.store} (¥${tx.totalAmount.toLocaleString()})`;
+
+      modal.classList.add('active');
+
+      let dataUrl = tx.receiptImage || null;
+      if (!dataUrl && tx.imageId) {
+        dataUrl = await ReceiptImageDB.getImage(tx.imageId);
+      }
+
+      if (loading) loading.style.display = 'none';
+      if (dataUrl) {
+        img.src = dataUrl;
+        img.style.display = 'inline-block';
+      } else {
+        if (caption) caption.textContent = '※レシート原本写真は保存されていません（容量節約設定）';
+      }
+    }
+
+    showImageModal(src, captionText = '') {
+      const modal = document.getElementById('receipt-photo-modal');
+      const img = document.getElementById('receipt-photo-img');
+      const loading = document.getElementById('receipt-photo-loading');
+      const caption = document.getElementById('receipt-photo-caption');
+
+      if (!modal || !img) return;
+      if (loading) loading.style.display = 'none';
+      img.src = src;
+      img.style.display = 'inline-block';
+      if (caption) caption.textContent = captionText;
+      modal.classList.add('active');
+    }
+
+    switchTab(tabName) {
+      this.currentTab = tabName;
+
+      document.querySelectorAll('.screen-view').forEach(screen => {
+        screen.classList.remove('active');
+      });
+
+      const targetScreen = document.getElementById(`screen-${tabName}`);
+      if (targetScreen) targetScreen.classList.add('active');
+
+      document.querySelectorAll('.nav-item').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tabName);
+      });
+
+      if (tabName === 'stats') {
+        this.renderStats();
+      } else if (tabName === 'home') {
+        this.renderHome();
+      } else if (tabName === 'fridge') {
+        this.renderFridge();
+      } else if (tabName === 'history') {
+        this.renderHistory();
+      }
+
+      const contentScroll = document.querySelector('.app-content-scroll');
+      if (contentScroll) contentScroll.scrollTop = 0;
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    showScanningOverlay() {
+      const overlay = document.getElementById('scanning-overlay');
+      if (overlay) overlay.style.display = 'flex';
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    hideScanningOverlay() {
+      const overlay = document.getElementById('scanning-overlay');
+      if (overlay) overlay.style.display = 'none';
+    }
+
+    showToast(message, duration = 2500) {
+      const toast = document.getElementById('toast-notification');
+      if (!toast) return;
+      toast.textContent = message;
+      toast.classList.add('show');
+      setTimeout(() => {
+        toast.classList.remove('show');
+      }, duration);
+    }
+
+    compressImage(file, maxDimension = 1200, quality = 0.8) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            let width = img.width;
+            let height = img.height;
+
+            if (width > maxDimension || height > maxDimension) {
+              if (width > height) {
+                height = Math.round((height * maxDimension) / width);
+                width = maxDimension;
+              } else {
+                width = Math.round((width * maxDimension) / height);
+                height = maxDimension;
+              }
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', quality));
+          };
+          img.onerror = () => resolve(null);
+          img.src = e.target.result;
+        };
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(file);
+      });
+    }
+
     fileToBase64(file) {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -2290,6 +2040,12 @@
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
+    }
+
+    getOffsetDateStr(offsetDays) {
+      const d = new Date();
+      d.setDate(d.getDate() + offsetDays);
+      return d.toISOString().split('T')[0];
     }
 
     escapeHtml(str) {
@@ -2302,43 +2058,36 @@
         .replace(/'/g, '&#39;');
     }
 
-    getOffsetDateStr(offsetDays) {
-      const d = new Date();
-      d.setDate(d.getDate() + offsetDays);
-      return d.toISOString().split('T')[0];
+    clearAllData() {
+      if (confirm('すべての取引履歴と冷蔵庫ストックを消去して0件にしますか？\n（この操作は元に戻せません）')) {
+        store.clearAllData();
+        this.renderAll();
+        this.showToast('すべてのデータを初期化しました');
+      }
+    }
+
+    loadDemoData() {
+      if (confirm('デモ用サンプルデータを再読み込みしますか？')) {
+        store.loadDemoData();
+        this.renderAll();
+        this.showToast('デモデータを読み込みました✨');
+      }
     }
   }
 
-  const appUI = new AppUI();
-  window.appUI = appUI;
-  window.switchTab = (tab) => appUI.switchTab(tab);
-  window.setPeriod = (period, btn) => {
-    document.querySelectorAll('.period-pill').forEach(p => p.classList.remove('active'));
-    if (btn) btn.classList.add('active');
-    appUI.currentPeriod = period;
-    appUI.renderStats();
+  // グローバル関数公開
+  window.setPeriod = function(period, el) {
+    if (window.appUI) {
+      window.appUI.currentPeriod = period;
+      document.querySelectorAll('.period-pill').forEach(btn => btn.classList.remove('active'));
+      if (el) el.classList.add('active');
+      window.appUI.renderStats();
+    }
   };
 
-  /* ==========================================================================
-     6. アプリケーション起動
-     ========================================================================== */
-  function startApplication() {
-    console.log('Starting SmartKakeibo App...');
-    try {
-      appUI.init();
-      if (window.lucide) {
-        window.lucide.createIcons();
-      }
-      console.log('SmartKakeibo initialized successfully.');
-    } catch (err) {
-      console.error('Initialization error:', err);
-    }
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', startApplication);
-  } else {
-    startApplication();
-  }
-
+  // アプリ起動
+  window.addEventListener('DOMContentLoaded', () => {
+    window.appUI = new AppUI();
+    window.appUI.init();
+  });
 })();

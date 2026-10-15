@@ -268,7 +268,7 @@
   gap: 10px;
 }
 
-/* --- 分析 & カロリー画面 --- */
+/* --- 支出分析画面 --- */
 .chart-container-card {
   background: var(--bg-surface);
   border-radius: var(--radius-lg);
@@ -290,33 +290,212 @@
   width: 100%;
 }
 
-.cal-efficiency-box {
-  background: linear-gradient(135deg, #FFFBEB, #FEF3C7);
-  border: 1px solid #FDE68A;
-  border-radius: var(--radius-md);
-  padding: 14px;
+/* --- ホーム画面: 主な支出カテゴリ (TOP3) カード --- */
+.top-categories-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
   margin-bottom: 14px;
+  box-shadow: var(--shadow-sm);
+}
+
+.top-categories-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.top-cat-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.top-cat-period {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--color-primary-dark);
+  background: var(--color-primary-light);
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+}
+
+.top-categories-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.top-cat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.top-cat-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.top-cat-name {
+  font-weight: 700;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.top-cat-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.top-cat-amount {
+  font-weight: 800;
+  color: var(--text-main);
+  font-family: var(--font-family-display);
+}
+
+.top-cat-bar-bg {
+  height: 6px;
+  background: var(--border-subtle);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.top-cat-bar-fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  transition: width 0.4s ease;
+}
+
+/* --- 分析画面: カテゴリ別支出一覧 --- */
+.stats-category-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stats-cat-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-}
-
-.cal-eff-left strong {
-  display: block;
+  padding: 8px 10px;
+  background: #F8FAFC;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-light);
   font-size: 12px;
-  color: #92400E;
 }
 
-.cal-eff-left span {
-  font-size: 11px;
-  color: #B45309;
+.stats-cat-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--text-secondary);
 }
 
-.cal-eff-value {
-  font-size: 20px;
+.stats-cat-badge-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.stats-cat-right {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.stats-cat-amount {
   font-weight: 800;
   font-family: var(--font-family-display);
-  color: #B45309;
+  color: var(--text-main);
+}
+
+.stats-cat-pct {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+/* --- 分析画面: 店舗別ランキング --- */
+.stats-store-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stats-store-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: #F8FAFC;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-light);
+}
+
+.stats-store-rank {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--border-light);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 8px;
+}
+
+.stats-store-rank.top1 {
+  background: #FEF3C7;
+  color: #D97706;
+}
+
+.stats-store-rank.top2 {
+  background: #E2E8F0;
+  color: #475569;
+}
+
+.stats-store-rank.top3 {
+  background: #FFEDD5;
+  color: #C2410C;
+}
+
+.stats-store-info {
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+
+.stats-store-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.stats-store-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: 6px;
+}
+
+.stats-store-amount {
+  font-size: 14px;
+  font-weight: 800;
+  font-family: var(--font-family-display);
+  color: var(--text-main);
 }
 
 /* --- 冷蔵庫ストック画面 --- */
@@ -455,8 +634,8 @@
 
 .draft-row-bottom {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 6px;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 8px;
 }
 
 .draft-field label {
@@ -492,13 +671,20 @@
   color: var(--text-main);
 }
 
-.badge-total-cal {
-  font-size: 13px;
-  font-weight: 800;
-  color: var(--color-calorie-dark);
+.badge-item-count {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-primary-dark);
+  background: var(--color-primary-light);
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+.badge-total-cal {
+  display: none;
 }
 
 /* --- 手入力 & 記録編集フォーム --- */
@@ -559,8 +745,8 @@
 
 .manual-row-bottom {
   display: grid;
-  grid-template-columns: 1fr 1fr 1.15fr;
-  gap: 6px;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 8px;
   width: 100%;
   box-sizing: border-box;
 }

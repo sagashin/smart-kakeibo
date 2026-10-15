@@ -1,20 +1,32 @@
 /**
- * 支出 & カロリーのグラフィカル可視化モジュール
+ * 支出のグラフィカル可視化モジュール
  * Chart.jsを活用した高精細・レスポンシブチャート
  */
 
 let timelineChartInstance = null;
-let calorieBreakdownChartInstance = null;
 let expenseBreakdownChartInstance = null;
+
+const CATEGORY_COLORS = {
+  '主食': '#10B981',
+  'お肉・魚': '#F43F5E',
+  '野菜・果物': '#84CC16',
+  '乳製品・飲料': '#06B6D4',
+  '惣菜・お弁当': '#F59E0B',
+  'お菓子・スイーツ': '#EC4899',
+  '日用品': '#8B5CF6',
+  '外食': '#EF4444',
+  'その他': '#94A3B8'
+};
 
 export function renderCharts(stats) {
   renderTimelineChart(stats);
-  renderCalorieBreakdownChart(stats);
   renderExpenseBreakdownChart(stats);
+  renderCategoryList(stats);
+  renderStoreRanking(stats);
 }
 
 /**
- * 支出 & カロリーの推移グラフ (日別 / 月別 / 累計)
+ * 支出推移グラフ (日別 / 月別 / 累計)
  */
 function renderTimelineChart(stats) {
   const canvas = document.getElementById('timeline-chart');
@@ -26,14 +38,10 @@ function renderTimelineChart(stats) {
 
   const ctx = canvas.getContext('2d');
 
-  // グラデーション作成
-  const expenseGrad = ctx.createLinearGradient(0, 0, 0, 240);
-  expenseGrad.addColorStop(0, 'rgba(16, 185, 129, 0.45)');
-  expenseGrad.addColorStop(1, 'rgba(16, 185, 129, 0.02)');
-
-  const calGrad = ctx.createLinearGradient(0, 0, 0, 240);
-  calGrad.addColorStop(0, 'rgba(245, 158, 11, 0.4)');
-  calGrad.addColorStop(1, 'rgba(245, 158, 11, 0.0)');
+  // エメラルドグリーンのグラデーション
+  const expenseGrad = ctx.createLinearGradient(0, 0, 0, 220);
+  expenseGrad.addColorStop(0, 'rgba(16, 185, 129, 0.7)');
+  expenseGrad.addColorStop(1, 'rgba(16, 185, 129, 0.15)');
 
   timelineChartInstance = new window.Chart(ctx, {
     type: 'bar',
@@ -47,64 +55,27 @@ function renderTimelineChart(stats) {
           borderColor: '#10B981',
           borderWidth: 2,
           borderRadius: 6,
-          yAxisID: 'yExpense',
-          order: 2
-        },
-        {
-          type: 'line',
-          label: '食品カロリー (kcal)',
-          data: stats.timeline.calories,
-          borderColor: '#F59E0B',
-          backgroundColor: '#F59E0B',
-          pointBackgroundColor: '#F59E0B',
-          pointBorderColor: '#FFFFFF',
-          pointBorderWidth: 2,
-          pointRadius: 4,
-          pointHoverRadius: 6,
-          borderWidth: 2.5,
-          tension: 0.35,
-          yAxisID: 'yCalorie',
-          order: 1
+          hoverBackgroundColor: '#10B981'
         }
       ]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      interaction: {
-        mode: 'index',
-        intersect: false
-      },
       plugins: {
         legend: {
-          position: 'top',
-          labels: {
-            boxWidth: 12,
-            boxHeight: 12,
-            usePointStyle: true,
-            color: '#64748B',
-            font: {
-              family: "'Plus Jakarta Sans', 'Noto Sans JP', sans-serif",
-              size: 11,
-              weight: '600'
-            }
-          }
+          display: false
         },
         tooltip: {
           backgroundColor: 'rgba(15, 23, 42, 0.9)',
           padding: 10,
           titleFont: { size: 12, weight: 'bold' },
-          bodyFont: { size: 11 },
+          bodyFont: { size: 12 },
           cornerRadius: 8,
           callbacks: {
             label: function(context) {
-              const label = context.dataset.label || '';
               const val = context.parsed.y || 0;
-              if (label.includes('円')) {
-                return ` 支出: ¥${val.toLocaleString()}`;
-              } else {
-                return ` カロリー: ${val.toLocaleString()} kcal`;
-              }
+              return ` 支出: ¥${val.toLocaleString()}`;
             }
           }
         }
@@ -117,27 +88,17 @@ function renderTimelineChart(stats) {
             font: { size: 10 }
           }
         },
-        yExpense: {
+        y: {
           type: 'linear',
-          position: 'left',
+          beginAtZero: true,
           grid: {
             color: 'rgba(226, 232, 240, 0.6)'
           },
           ticks: {
-            color: '#10B981',
+            color: '#64748B',
             font: { size: 10 },
             callback: (v) => '¥' + (v >= 1000 ? (v / 1000) + 'k' : v)
           }
-        },
-        yCalorie: {
-          type: 'linear',
-          position: 'right',
-          grid: { drawOnChartArea: false },
-          ticks: {
-            color: '#F59E0B',
-            font: { size: 10 },
-            callback: (v) => (v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v) + 'c'
-          }
         }
       }
     }
@@ -145,71 +106,7 @@ function renderTimelineChart(stats) {
 }
 
 /**
- * カロリーの食品カテゴリ別ドーナツ
- */
-function renderCalorieBreakdownChart(stats) {
-  const canvas = document.getElementById('calorie-breakdown-chart');
-  if (!canvas || !window.Chart) return;
-
-  if (calorieBreakdownChartInstance) {
-    calorieBreakdownChartInstance.destroy();
-  }
-
-  const entries = Object.entries(stats.calorieByCategory || {});
-  const labels = entries.map(([k]) => k);
-  const data = entries.map(([, v]) => v);
-
-  if (data.length === 0 || data.every(v => v === 0)) {
-    labels.push('データなし');
-    data.push(1);
-  }
-
-  const colors = [
-    '#F59E0B', '#EF4444', '#10B981', '#3B82F6', '#8B5CF6', '#EC4899', '#64748B'
-  ];
-
-  const ctx = canvas.getContext('2d');
-  calorieBreakdownChartInstance = new window.Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      labels,
-      datasets: [{
-        data,
-        backgroundColor: colors.slice(0, labels.length),
-        borderWidth: 2,
-        borderColor: '#FFFFFF'
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      cutout: '72%',
-      plugins: {
-        legend: {
-          position: 'right',
-          labels: {
-            boxWidth: 10,
-            usePointStyle: true,
-            color: '#64748B',
-            font: { size: 10 }
-          }
-        },
-        tooltip: {
-          callbacks: {
-            label: function(ctx) {
-              const label = ctx.label || '';
-              const val = ctx.parsed || 0;
-              return ` ${label}: ${val.toLocaleString()} kcal`;
-            }
-          }
-        }
-      }
-    }
-  });
-}
-
-/**
- * 支出カテゴリ別ドーナツ
+ * 支出カテゴリ別ドーナツグラフ
  */
 function renderExpenseBreakdownChart(stats) {
   const canvas = document.getElementById('expense-breakdown-chart');
@@ -219,18 +116,18 @@ function renderExpenseBreakdownChart(stats) {
     expenseBreakdownChartInstance.destroy();
   }
 
-  const entries = Object.entries(stats.categoryTotals || {});
-  const labels = entries.map(([k]) => k);
-  const data = entries.map(([, v]) => v);
+  const entries = Object.entries(stats.categoryTotals || {}).filter(([, v]) => v > 0);
+  entries.sort((a, b) => b[1] - a[1]); // 金額の降順
 
-  if (data.length === 0 || data.every(v => v === 0)) {
-    labels.push('支出なし');
-    data.push(1);
+  let labels = entries.map(([k]) => k);
+  let data = entries.map(([, v]) => v);
+
+  if (data.length === 0) {
+    labels = ['支出なし'];
+    data = [1];
   }
 
-  const colors = [
-    '#10B981', '#06B6D4', '#6366F1', '#F43F5E', '#EAB308', '#8B5CF6', '#94A3B8'
-  ];
+  const colors = labels.map(label => CATEGORY_COLORS[label] || '#94A3B8');
 
   const ctx = canvas.getContext('2d');
   expenseBreakdownChartInstance = new window.Chart(ctx, {
@@ -239,15 +136,16 @@ function renderExpenseBreakdownChart(stats) {
       labels,
       datasets: [{
         data,
-        backgroundColor: colors.slice(0, labels.length),
+        backgroundColor: colors,
         borderWidth: 2,
-        borderColor: '#FFFFFF'
+        borderColor: '#FFFFFF',
+        hoverOffset: 4
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      cutout: '72%',
+      cutout: '70%',
       plugins: {
         legend: {
           position: 'right',
@@ -255,7 +153,7 @@ function renderExpenseBreakdownChart(stats) {
             boxWidth: 10,
             usePointStyle: true,
             color: '#64748B',
-            font: { size: 10 }
+            font: { size: 11, weight: '600' }
           }
         },
         tooltip: {
@@ -263,11 +161,80 @@ function renderExpenseBreakdownChart(stats) {
             label: function(ctx) {
               const label = ctx.label || '';
               const val = ctx.parsed || 0;
-              return ` ${label}: ¥${val.toLocaleString()}`;
+              const total = data.reduce((a, b) => a + b, 0);
+              const pct = total > 0 ? Math.round((val / total) * 100) : 0;
+              return ` ${label}: ¥${val.toLocaleString()} (${pct}%)`;
             }
           }
         }
       }
     }
   });
+}
+
+/**
+ * 分析画面: カテゴリ別支出一覧
+ */
+function renderCategoryList(stats) {
+  const container = document.getElementById('stats-category-list');
+  if (!container) return;
+
+  const entries = Object.entries(stats.categoryTotals || {}).filter(([, v]) => v > 0);
+  entries.sort((a, b) => b[1] - a[1]);
+
+  if (entries.length === 0) {
+    container.innerHTML = `<div style="text-align: center; color: var(--text-muted); font-size: 12px; padding: 12px;">データがありません</div>`;
+    return;
+  }
+
+  const total = stats.totalExpense || 1;
+
+  container.innerHTML = entries.map(([cat, amount]) => {
+    const color = CATEGORY_COLORS[cat] || '#94A3B8';
+    const pct = Math.round((amount / total) * 100);
+    return `
+      <div class="stats-cat-item">
+        <div class="stats-cat-left">
+          <span class="stats-cat-badge-dot" style="background-color: ${color};"></span>
+          <span>${cat}</span>
+        </div>
+        <div class="stats-cat-right">
+          <span class="stats-cat-amount">¥${amount.toLocaleString()}</span>
+          <span class="stats-cat-pct">(${pct}%)</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+/**
+ * 分析画面: 利用店舗ランキング
+ */
+function renderStoreRanking(stats) {
+  const container = document.getElementById('stats-store-ranking-list');
+  if (!container) return;
+
+  const entries = Object.entries(stats.storeTotals || {}).filter(([, d]) => d.amount > 0);
+  entries.sort((a, b) => b[1].amount - a[1].amount);
+
+  if (entries.length === 0) {
+    container.innerHTML = `<div style="text-align: center; color: var(--text-muted); font-size: 12px; padding: 12px;">店舗記録がありません</div>`;
+    return;
+  }
+
+  const top5 = entries.slice(0, 5);
+
+  container.innerHTML = top5.map(([storeName, data], idx) => {
+    const rankClass = idx === 0 ? 'top1' : idx === 1 ? 'top2' : idx === 2 ? 'top3' : '';
+    return `
+      <div class="stats-store-item">
+        <div class="stats-store-info">
+          <span class="stats-store-rank ${rankClass}">${idx + 1}</span>
+          <span class="stats-store-name">${storeName}</span>
+          <span class="stats-store-count">(${data.count}回)</span>
+        </div>
+        <div class="stats-store-amount">¥${data.amount.toLocaleString()}</div>
+      </div>
+    `;
+  }).join('');
 }
