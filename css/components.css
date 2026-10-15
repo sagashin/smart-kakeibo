@@ -333,11 +333,13 @@ body.full-width-mode .bottom-nav {
   color: var(--text-muted);
   cursor: pointer;
   padding: 6px;
+  min-width: 32px;
+  min-height: 32px;
   border-radius: var(--radius-sm);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: color var(--transition-fast);
+  transition: color var(--transition-fast), background var(--transition-fast);
 }
 
 .btn-icon-subtle:hover {

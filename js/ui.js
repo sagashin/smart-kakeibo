@@ -181,6 +181,7 @@ export class AppUI {
       this.renderHistory();
     }
 
+    if (window.lucide) window.lucide.createIcons();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -268,7 +269,7 @@ export class AppUI {
       if (recent.length === 0) {
         recentList.innerHTML = `<div class="empty-state">まだ記録がありません。「レシート撮影」または「手入力」から追加してみましょう！</div>`;
       } else {
-        recentList.innerHTML = recent.map(tx => this.createTransactionCardHtml(tx)).join('');
+        recentList.innerHTML = recent.map(tx => this.createTransactionCardHtml(tx, true)).join('');
       }
     }
 
@@ -291,6 +292,8 @@ export class AppUI {
         fridgeAlertBox.style.display = 'none';
       }
     }
+
+    if (window.lucide) window.lucide.createIcons();
   }
 
   // --- 支出分析画面描画 ---
@@ -322,6 +325,7 @@ export class AppUI {
 
     // グラフ描画
     renderCharts(stats);
+    if (window.lucide) window.lucide.createIcons();
   }
 
   // --- 冷蔵庫ストック描画 ---
@@ -405,11 +409,12 @@ export class AppUI {
     }
 
     listEl.innerHTML = store.transactions.map(tx => this.createTransactionCardHtml(tx, true)).join('');
+    if (window.lucide) window.lucide.createIcons();
   }
 
-  createTransactionCardHtml(tx, showDelete = false) {
-    const dateFormatted = tx.date.split('-').slice(1).join('/');
-    const hasDiscount = tx.totalDiscount > 0;
+  createTransactionCardHtml(tx, showDelete = true) {
+    const dateFormatted = tx.date ? tx.date.split('-').slice(1).join('/') : '';
+    const hasDiscount = (tx.totalDiscount || 0) > 0;
     const items = tx.items || [];
 
     return `
@@ -420,12 +425,12 @@ export class AppUI {
             <span class="tx-store">${this.escapeHtml(tx.store)}</span>
           </div>
           <div class="tx-header-right">
-            <span class="tx-amount">¥${tx.totalAmount.toLocaleString()}</span>
-            <button class="btn-icon-subtle" onclick="event.stopPropagation(); window.appUI.openEditTxModal('${tx.id}')" title="この記録と品目を編集">
+            <span class="tx-amount">¥${(tx.totalAmount || 0).toLocaleString()}</span>
+            <button type="button" class="btn-icon-subtle" onclick="event.stopPropagation(); window.appUI.openEditTxModal('${tx.id}')" title="この記録と品目を編集">
               <i data-lucide="edit-2"></i>
             </button>
             ${showDelete ? `
-              <button class="btn-icon-subtle text-danger" onclick="event.stopPropagation(); window.appUI.deleteTx('${tx.id}')" title="この記録全体を削除">
+              <button type="button" class="btn-icon-subtle text-danger" onclick="event.stopPropagation(); window.appUI.deleteTx('${tx.id}')" title="この記録全体を削除">
                 <i data-lucide="trash-2"></i>
               </button>
             ` : ''}
@@ -436,7 +441,7 @@ export class AppUI {
           <span class="pill-badge count-badge">
             <i data-lucide="shopping-cart"></i> ${items.length}品
           </span>
-          <span class="pill-badge cat-badge">${tx.category}</span>
+          <span class="pill-badge cat-badge">${tx.category || 'その他'}</span>
           ${hasDiscount ? `
             <span class="pill-badge discount-badge">
               <i data-lucide="tag"></i> ¥${tx.totalDiscount} 節約
@@ -449,28 +454,35 @@ export class AppUI {
           ` : ''}
         </div>
 
-        <div class="tx-items-preview" id="items-${tx.id}">
+        <div class="tx-items-preview">
           ${items.map((i, idx) => `
             <span class="tx-item-chip ${idx >= 3 ? 'item-hidden' : ''}" style="${idx >= 3 ? 'display: none;' : ''}" onclick="event.stopPropagation(); window.appUI.openEditTxModal('${tx.id}')" title="タップして品目を編集">
               ${this.escapeHtml(i.name)}
-              <span class="chip-delete-btn" onclick="event.stopPropagation(); window.appUI.deleteTxItem('${tx.id}', '${i.id}', '${this.escapeHtml(i.name)}')" title="この品目を削除">×</span>
+              <span class="chip-delete-btn" onclick="event.stopPropagation(); window.appUI.deleteTxItem('${tx.id}', '${i.id}')" title="この品目を削除">×</span>
             </span>
           `).join('')}
           ${items.length > 3 ? `
-            <span class="tx-item-more" id="more-btn-${tx.id}" onclick="window.appUI.toggleMoreItems('${tx.id}')">+他${items.length - 3}品を表示</span>
+            <span class="tx-item-more" onclick="window.appUI.toggleMoreItems(this)">+他${items.length - 3}品を表示</span>
           ` : ''}
         </div>
       </div>
     `;
   }
 
-  toggleMoreItems(txId) {
-    const container = document.getElementById(`items-${txId}`);
-    const moreBtn = document.getElementById(`more-btn-${txId}`);
+  toggleMoreItems(target) {
+    let container, moreBtn;
+    if (typeof target === 'string') {
+      container = document.getElementById(`items-${target}`) || document.querySelector(`[data-tx-id="${target}"] .tx-items-preview`);
+      moreBtn = document.getElementById(`more-btn-${target}`);
+    } else if (target && target.closest) {
+      moreBtn = target;
+      container = target.closest('.tx-items-preview');
+    }
     if (!container) return;
 
     const hiddenItems = container.querySelectorAll('.item-hidden');
-    const isCurrentlyHidden = hiddenItems[0] && hiddenItems[0].style.display === 'none';
+    if (hiddenItems.length === 0) return;
+    const isCurrentlyHidden = hiddenItems[0].style.display === 'none';
 
     hiddenItems.forEach(el => {
       el.style.display = isCurrentlyHidden ? 'inline-flex' : 'none';
@@ -485,19 +497,19 @@ export class AppUI {
     if (confirm('この記録を削除しますか？')) {
       store.deleteTransaction(id);
       this.showToast('記録を削除しました');
-      this.renderHome();
-      this.renderHistory();
-      this.renderStats();
+      this.renderAll();
     }
   }
 
-  deleteTxItem(txId, itemId, itemName) {
+  deleteTxItem(txId, itemId) {
+    const tx = store.transactions.find(t => t.id === txId);
+    const item = tx?.items?.find(i => i.id === itemId);
+    const itemName = item ? item.name : 'この品目';
+
     if (confirm(`「${itemName}」を削除しますか？`)) {
       store.deleteTransactionItem(txId, itemId);
       this.showToast(`「${itemName}」を削除しました`);
-      this.renderHome();
-      this.renderHistory();
-      this.renderStats();
+      this.renderAll();
     }
   }
 
@@ -978,7 +990,7 @@ export class AppUI {
 
     if (tx.items && tx.items.length > 0) {
       tx.items.forEach(item => {
-        this.addEditTxItemRow(item.name, item.price, item.category);
+        this.addEditTxItemRow(item.name, item.price, item.category, item.id);
       });
     } else {
       this.addEditTxItemRow('', tx.totalAmount, tx.category);
@@ -989,7 +1001,7 @@ export class AppUI {
     if (window.lucide) window.lucide.createIcons();
   }
 
-  addEditTxItemRow(name = '', price = '', category = '主食') {
+  addEditTxItemRow(name = '', price = '', category = '主食', itemId = null) {
     const container = document.getElementById('edit-tx-items-container');
     if (!container) return;
 
@@ -997,6 +1009,8 @@ export class AppUI {
     const div = document.createElement('div');
     div.className = 'manual-item-row';
     div.id = rowId;
+    if (itemId) div.dataset.itemId = itemId;
+
     div.innerHTML = `
       <div class="manual-row-top">
         <input type="text" class="input-food-name" placeholder="商品名 (例: 牛乳, パン, 洗剤)" value="${this.escapeHtml(name)}">
@@ -1070,9 +1084,11 @@ export class AppUI {
       const name = row.querySelector('.input-food-name').value.trim();
       const price = Number(row.querySelector('.input-food-price').value) || 0;
       const category = row.querySelector('.input-food-cat').value;
+      const itemId = row.dataset.itemId;
 
       if (name || price > 0) {
         items.push({
+          ...(itemId ? { id: itemId } : {}),
           name: name || '品目',
           price,
           category,
@@ -1098,9 +1114,7 @@ export class AppUI {
     if (modal) modal.classList.remove('active');
 
     this.showToast('記録と品目を更新しました✨');
-    this.renderHome();
-    this.renderHistory();
-    this.renderStats();
+    this.renderAll();
   }
 }
 
