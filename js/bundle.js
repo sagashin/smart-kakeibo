@@ -701,24 +701,96 @@
 純粋なJSON文字列のみを出力してください（説明文や余分なテキストは不要）。
 `;
 
-  // 利用可能なGeminiモデル（実在する高精度＆最速モデル順）
-  const CANDIDATE_MODELS = [
-    'gemini-2.5-flash',
+  // フォールバック用の標準Geminiモデル一覧（実在する高精度＆安定稼働モデル）
+  const FALLBACK_MODELS = [
+    'gemini-1.5-flash',
+    'gemini-1.5-flash-latest',
     'gemini-2.0-flash',
+    'gemini-2.0-flash-exp',
+    'gemini-2.5-flash',
     'gemini-2.5-flash-lite',
-    'gemini-1.5-flash'
+    'gemini-1.5-pro',
+    'gemini-1.5-pro-latest'
   ];
 
   const PREFERRED_MODEL_KEY = 'smart_kakeibo_preferred_model';
+  const DETECTED_MODELS_KEY = 'smart_kakeibo_detected_models';
 
-  function getOrderedCandidateModels() {
+  /**
+   * ユーザーのAPIキーで実際に利用可能なモデル一覧をGoogle APIから直接取得
+   */
+  async function fetchAvailableGeminiModels(rawApiKey) {
+    const apiKey = sanitizeApiKey(rawApiKey);
+    if (!apiKey) return [];
+
     try {
-      const preferred = localStorage.getItem(PREFERRED_MODEL_KEY);
-      if (preferred && CANDIDATE_MODELS.includes(preferred)) {
-        return [preferred, ...CANDIDATE_MODELS.filter(m => m !== preferred)];
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
+      const res = await fetch(endpoint);
+      if (!res.ok) {
+        console.warn(`ListModels failed with status ${res.status}`);
+        return [];
       }
+      const data = await res.json();
+      const models = (data.models || [])
+        .filter(m => m.supportedGenerationMethods?.includes('generateContent'))
+        .map(m => m.name.replace(/^models\//, ''));
+
+      if (models.length > 0) {
+        try {
+          sessionStorage.setItem(DETECTED_MODELS_KEY, JSON.stringify(models));
+        } catch (e) {}
+      }
+      return models;
+    } catch (err) {
+      console.warn('Failed to fetch available models:', err);
+      return [];
+    }
+  }
+
+  /**
+   * 試行するモデルの優先順序リストを動的生成（実在するモデルのみを厳選）
+   */
+  async function getOrderedCandidateModels(rawApiKey) {
+    const apiKey = sanitizeApiKey(rawApiKey);
+    let available = [];
+
+    try {
+      const cached = sessionStorage.getItem(DETECTED_MODELS_KEY);
+      if (cached) available = JSON.parse(cached);
     } catch (e) {}
-    return [...CANDIDATE_MODELS];
+
+    if (!available || available.length === 0) {
+      available = await fetchAvailableGeminiModels(apiKey);
+    }
+
+    let preferred = null;
+    try {
+      preferred = localStorage.getItem(PREFERRED_MODEL_KEY);
+    } catch (e) {}
+
+    const priorityRank = (name) => {
+      if (name === preferred) return 0;
+      if (name === 'gemini-1.5-flash') return 1;
+      if (name === 'gemini-1.5-flash-latest') return 2;
+      if (name === 'gemini-2.0-flash') return 3;
+      if (name === 'gemini-2.5-flash') return 4;
+      if (name === 'gemini-2.5-flash-lite') return 5;
+      if (name.includes('1.5-flash')) return 6;
+      if (name.includes('2.0-flash')) return 7;
+      if (name.includes('flash')) return 10;
+      if (name.includes('pro')) return 20;
+      return 30;
+    };
+
+    if (available && available.length > 0) {
+      const sorted = [...available].sort((a, b) => priorityRank(a) - priorityRank(b));
+      return sorted;
+    }
+
+    if (preferred && FALLBACK_MODELS.includes(preferred)) {
+      return [preferred, ...FALLBACK_MODELS.filter(m => m !== preferred)];
+    }
+    return [...FALLBACK_MODELS];
   }
 
   function sanitizeApiKey(key) {
@@ -736,7 +808,7 @@
       return 'アクセス権限がありません(403)。APIキーの利用制限やGoogle AI Studioの設定を確認してください。';
     }
     if (status === 404) {
-      return '指定されたAIモデルが見つかりません(404)。';
+      return '指定されたAIモデルが見つかりません(404)。Google AI StudioでAPIキーのアクセス許可をご確認いただくか、設定画面で接続テストをお試しください。';
     }
     if (status === 429) {
       return 'リクエスト上限(レートリミット)に達しました(429)。数十秒おいて再試行してください。';
@@ -753,12 +825,13 @@
       return { ok: false, message: 'APIキーが入力されていません。' };
     }
 
+    const models = await getOrderedCandidateModels(apiKey);
     let lastError = null;
-    const models = getOrderedCandidateModels();
 
     for (const modelName of models) {
+      const cleanModel = modelName.replace(/^models\//, '');
       try {
-        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${apiKey}`;
         const response = await fetch(endpoint, {
           method: 'POST',
           headers: {
@@ -777,7 +850,7 @@
           const msg = errorData.error?.message || response.statusText;
 
           if (status === 404) {
-            lastError = new Error(`モデル ${modelName} は利用できません (${msg})`);
+            lastError = new Error(`モデル ${cleanModel} は利用できません (${msg})`);
             continue;
           }
           return {
@@ -787,13 +860,13 @@
         }
 
         try {
-          localStorage.setItem(PREFERRED_MODEL_KEY, modelName);
+          localStorage.setItem(PREFERRED_MODEL_KEY, cleanModel);
         } catch (e) {}
 
         return {
           ok: true,
-          model: modelName,
-          message: `接続成功！モデル「${modelName}」で正常にAI通信が確認できました✨`
+          model: cleanModel,
+          message: `接続成功！利用可能なAIモデル「${cleanModel}」が検出され、正常に通信できました✨`
         };
       } catch (err) {
         lastError = err;
@@ -814,11 +887,12 @@
 
     const cleanBase64 = base64Image.replace(/^data:image\/[a-z]+;base64,/, '');
     let lastError = null;
-    const models = getOrderedCandidateModels();
+    const models = await getOrderedCandidateModels(apiKey);
 
     for (const modelName of models) {
+      const cleanModel = modelName.replace(/^models\//, '');
       try {
-        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${apiKey}`;
 
         const responseSchema = {
           type: 'OBJECT',
@@ -901,7 +975,7 @@
           const formatted = formatGeminiErrorMessage(status, rawMsg);
 
           if (status === 404) {
-            console.warn(`Model ${modelName} returned 404, trying next...`);
+            console.warn(`Model ${cleanModel} returned 404, trying next...`);
             lastError = new Error(formatted);
             continue;
           }
@@ -914,7 +988,7 @@
         if (!text) throw new Error('Gemini APIから応答が得られませんでした。');
 
         try {
-          localStorage.setItem(PREFERRED_MODEL_KEY, modelName);
+          localStorage.setItem(PREFERRED_MODEL_KEY, cleanModel);
         } catch (e) {}
 
         let cleaned = text.trim();
@@ -986,7 +1060,7 @@
           items
         };
       } catch (err) {
-        console.warn(`Model ${modelName} failed:`, err);
+        console.warn(`Model ${cleanModel} failed:`, err);
         lastError = err;
         if (err.message && (err.message.includes('APIキーが無効') || err.message.includes('400') || err.message.includes('403'))) {
           throw err;
