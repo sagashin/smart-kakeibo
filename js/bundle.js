@@ -712,65 +712,95 @@
       throw new Error('Gemini APIキーが設定されていません。');
     }
     const cleanBase64 = base64Image.replace(/^data:image\/[a-z]+;base64,/, '');
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+    const candidateModels = [
+      'gemini-3.8-flash',
+      'gemini-2.5-flash',
+      'gemini-1.5-flash'
+    ];
 
     const promptText = `レシートから店舗名(store), 日付(date: YYYY-MM-DD), 合計(totalAmount: 数値), 値引き(totalDiscount: 数値), items: [{name, price, quantity, isFood(真偽値), category, calories(食品の場合の推定kcal), shelfLifeDays(食品の消費目安日数)}] を抽出して純粋なJSONで返してください。`;
 
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            { text: promptText },
-            { inline_data: { mime_type: mimeType, data: cleanBase64 } }
-          ]
-        }],
-        generationConfig: { temperature: 0.1, responseMimeType: 'application/json' }
-      })
-    });
+    let lastError = null;
 
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(`Gemini APIエラー: ${err.error?.message || response.statusText}`);
+    for (const modelName of candidateModels) {
+      try {
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [
+                { text: promptText },
+                { inline_data: { mime_type: mimeType, data: cleanBase64 } }
+              ]
+            }],
+            generationConfig: { temperature: 0.1, responseMimeType: 'application/json' }
+          })
+        });
+
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({}));
+          const errMsg = err.error?.message || response.statusText;
+          if (response.status === 404 || errMsg.includes('no longer available') || errMsg.includes('not found')) {
+            lastError = new Error(`Gemini APIエラー (${modelName}): ${errMsg}`);
+            continue;
+          }
+          throw new Error(`Gemini APIエラー: ${errMsg}`);
+        }
+
+        const data = await response.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!text) {
+          throw new Error('AIから応答を受信できませんでした。画像が鮮明か確認してください。');
+        }
+
+        const parsed = JSON.parse(text);
+
+        const items = (parsed.items || []).map(item => {
+          let cal = Number(item.calories) || 0;
+          let isFood = item.isFood;
+          let shelfLife = item.shelfLifeDays;
+          let category = item.category || '食費';
+          if (isFood && cal === 0) {
+            const est = estimateFoodCalories(item.name);
+            cal = est.calories;
+            shelfLife = shelfLife || est.shelfLifeDays;
+          }
+          return {
+            name: item.name || '商品',
+            price: Number(item.price) || 0,
+            quantity: Number(item.quantity) || 1,
+            isFood: !!isFood,
+            category,
+            calories: cal,
+            shelfLifeDays: shelfLife || 3
+          };
+        });
+
+        const totalAmount = Number(parsed.totalAmount) || items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+        const totalCalories = items.reduce((sum, i) => sum + (i.calories * i.quantity), 0);
+
+        return {
+          store: parsed.store || '店舗不明',
+          date: parsed.date || new Date().toISOString().split('T')[0],
+          totalAmount,
+          totalDiscount: Number(parsed.totalDiscount) || 0,
+          totalCalories,
+          items
+        };
+      } catch (err) {
+        lastError = err;
+        if (err.message && (err.message.includes('no longer available') || err.message.includes('not found'))) {
+          continue;
+        }
+        throw err;
+      }
     }
 
-    const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    const parsed = JSON.parse(text);
-
-    const items = (parsed.items || []).map(item => {
-      let cal = Number(item.calories) || 0;
-      let isFood = item.isFood;
-      let shelfLife = item.shelfLifeDays;
-      let category = item.category || '食費';
-      if (isFood && cal === 0) {
-        const est = estimateFoodCalories(item.name);
-        cal = est.calories;
-        shelfLife = shelfLife || est.shelfLifeDays;
-      }
-      return {
-        name: item.name || '商品',
-        price: Number(item.price) || 0,
-        quantity: Number(item.quantity) || 1,
-        isFood: !!isFood,
-        category,
-        calories: cal,
-        shelfLifeDays: shelfLife || 3
-      };
-    });
-
-    const totalAmount = Number(parsed.totalAmount) || items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
-    const totalCalories = items.reduce((sum, i) => sum + (i.calories * i.quantity), 0);
-
-    return {
-      store: parsed.store || '店舗不明',
-      date: parsed.date || new Date().toISOString().split('T')[0],
-      totalAmount,
-      totalDiscount: Number(parsed.totalDiscount) || 0,
-      totalCalories,
-      items
-    };
+    throw lastError || new Error('利用可能なGeminiモデルが見つかりませんでした。');
   }
 
   /* ==========================================================================

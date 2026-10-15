@@ -60,54 +60,74 @@ export async function parseReceiptWithGemini(base64Image, mimeType = 'image/jpeg
   // Base64プレフィックスの除去
   const cleanBase64 = base64Image.replace(/^data:image\/[a-z]+;base64,/, '');
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+  const candidateModels = [
+    'gemini-3.8-flash',
+    'gemini-2.5-flash',
+    'gemini-1.5-flash'
+  ];
 
-  const requestBody = {
-    contents: [
-      {
-        parts: [
-          { text: SYSTEM_PROMPT },
+  let lastError = null;
+
+  for (const modelName of candidateModels) {
+    try {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+
+      const requestBody = {
+        contents: [
           {
-            inline_data: {
-              mime_type: mimeType,
-              data: cleanBase64
-            }
+            parts: [
+              { text: SYSTEM_PROMPT },
+              {
+                inline_data: {
+                  mime_type: mimeType,
+                  data: cleanBase64
+                }
+              }
+            ]
           }
-        ]
+        ],
+        generationConfig: {
+          temperature: 0.1,
+          responseMimeType: 'application/json'
+        }
+      };
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errMsg = errorData.error?.message || response.statusText;
+        if (response.status === 404 || errMsg.includes('no longer available') || errMsg.includes('not found')) {
+          lastError = new Error(`Gemini APIエラー (${modelName}): ${errMsg}`);
+          continue;
+        }
+        throw new Error(`Gemini APIエラー: ${errMsg}`);
       }
-    ],
-    generationConfig: {
-      temperature: 0.1,
-      responseMimeType: 'application/json'
+
+      const data = await response.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) {
+        throw new Error('AIから応答を受信できませんでした。画像が鮮明か確認してください。');
+      }
+
+      const parsed = JSON.parse(text);
+      return normalizeParsedData(parsed);
+    } catch (err) {
+      lastError = err;
+      if (err.message && (err.message.includes('no longer available') || err.message.includes('not found'))) {
+        continue;
+      }
+      throw err;
     }
-  };
-
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(requestBody)
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(`Gemini APIエラー: ${errorData.error?.message || response.statusText}`);
   }
 
-  const data = await response.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) {
-    throw new Error('AIから応答を受信できませんでした。画像が鮮明か確認してください。');
-  }
-
-  try {
-    const parsed = JSON.parse(text);
-    return normalizeParsedData(parsed);
-  } catch (err) {
-    console.error('JSON Parse error:', text);
-    throw new Error('レシートデータの解析に失敗しました。');
-  }
+  throw lastError || new Error('利用可能なGeminiモデルが見つかりませんでした。');
 }
 
 /**
