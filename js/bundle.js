@@ -675,16 +675,22 @@
 1. 商品名のクレンジング（記号・税区分の完全除去）:
    - 軽減税率や税区分を表す記号（「*」「※」「軽」「外」「内」「#」「八」「8%」「10%」「T」など）は、商品名から完全に除去してください。
    - レシート特有の略称や半角カナは、自然で読みやすい日本語に補正してください。
-     例:「CGCｷﾞｳﾆｭｳ」→「CGC 牛乳」、「ｺｸｻﾝﾄﾘﾓﾓ」→「国産鶏もも肉」、「ﾊﾟｽｺ ﾁｮｳｼﾞｭｸ」→「パスコ 超熟」
+     例:「CGCｷﾞｭｳﾆｭｳ」→「CGC 牛乳」、「ｺｸｻﾝﾄﾘﾓﾓ」→「国産鶏もも肉」、「ﾊﾟｽｺ ﾁｮｳｼﾞｭｸ」→「パスコ 超熟」
 2. 値引き・割引行の吸収:
    - 商品の直下にある「値引」「▲50」「30%引」「半額」などの行は、独立した品目として計上しないでください。
    - 対象商品の金額（price）から値引き分を差し引いた実支払額にするか、レシート全体の「値引き合計（totalDiscount）」に合算してください。
 3. 数量・単価・金額の対応:
    - 「@158 × 2」のように単価と個数が並んでいる場合、quantityを2、priceをその品目の支払合計額（単価×数量）として正しく対応づけてください。単価を誤って商品名や総額に混同しないでください。
-4. 税抜と税込・合計金額（totalAmount）の整合性:
-   - レシート最下部に記載された、利用者が実際に支払った最終の「合計金額（税込・値引適用後）」を totalAmount に設定してください。
-   - 「小計」「お預り額」「お釣り」「外税対象額」「内消費税等」などを合計金額と誤認しないでください。
-   - 各品目の金額（price）は、可能な限り税込実支払額として算出してください。
+4. 【最重要】消費税（8%・10%）と外税方式レシートの税込化ルール:
+   - 日本のスーパーやドラッグストアの多くは、各品目には「税抜（本体価格）」のみが印字され、末尾に「小計」「消費税等（8%）」「合計（税込）」が記載されています。
+   - 家計簿アプリとして正確に記録するため、【各品目の金額（price）は必ず「税込実支払金額」に換算】してください！
+     - 飲食料品（isFood: true）の場合: 税抜価格 × 1.08（端数は四捨五入）
+     - 日用品等の場合: 税抜価格 × 1.10（端数は四捨五入）
+     - すでにレシートが税込表示（内税方式やコンビニなど）の場合は、印字されている税込価格をそのまま使用してください。
+   - 【合計金額（totalAmount）の厳格な一致】:
+     - totalAmount はレシート最下部の「お買上合計」「領収金額」「お支払い合計」の【実際の最終支払税込金額】と完全に一致させてください。
+     - 各品目の price × quantity の合計（- totalDiscount）が、この totalAmount とピッタリ一致するように、端数（1〜2円程度）があれば品目の金額で調整してください。
+     - 「小計」「税抜対象額」「お預り額」「釣銭」を合計金額と誤認しないでください。
 5. 除外すべき非商品行:
    - 「ポイント利用」「ポイント付与」「チャージ額」「クレジット売上」「お預り」「釣銭」「登録番号」「店舗電話番号」などは購入品目に含めないでください（※レジ袋は日用品として含めて構いません）。
 6. 食品判定とカテゴリ・消費目安日数（shelfLifeDays）:
@@ -897,7 +903,7 @@
         }
 
         const data = JSON.parse(cleaned);
-        const items = (data.items || []).map(item => {
+        let items = (data.items || []).map(item => {
           let isFood = item.isFood;
           let category = item.category || 'その他';
           if (isFood === undefined) isFood = category !== '日用品' && category !== 'その他';
@@ -911,12 +917,45 @@
           };
         });
 
-        const totalAmount = Number(data.totalAmount) || items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+        const rawTotalAmount = Number(data.totalAmount) || 0;
+        const totalDiscount = Number(data.totalDiscount) || 0;
+        const itemsSum = items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+
+        // 外税レシート自動検知＆税込自動換算
+        const effectiveTotalBeforeDiscount = rawTotalAmount > 0 ? (rawTotalAmount + totalDiscount) : 0;
+        if (itemsSum > 0 && effectiveTotalBeforeDiscount > 0) {
+          const taxRatio = effectiveTotalBeforeDiscount / itemsSum;
+          // 比率が 1.055 〜 1.13 の範囲にある場合、各品目が税抜で印字されていたと判定
+          if (taxRatio >= 1.055 && taxRatio <= 1.13) {
+            console.log(`[Receipt] 外税レシートを検知（税率比率: ${taxRatio.toFixed(3)}）。品目を税込金額に自動換算します。`);
+            let runningSum = 0;
+            items = items.map(item => {
+              const rate = (taxRatio < 1.09) ? 1.08 : (item.isFood ? 1.08 : 1.10);
+              const taxIncluded = Math.round(item.price * rate);
+              runningSum += taxIncluded * item.quantity;
+              return {
+                ...item,
+                price: taxIncluded
+              };
+            });
+
+            // 最終支払額と端数（1〜2円）のズレがある場合、最後の品目で微調整してピッタリ合致させる
+            const diff = effectiveTotalBeforeDiscount - runningSum;
+            if (Math.abs(diff) <= items.length * 2 && items.length > 0) {
+              items[items.length - 1].price += diff;
+            }
+          }
+        }
+
+        const finalTotalAmount = rawTotalAmount > 0
+          ? rawTotalAmount
+          : Math.max(0, items.reduce((sum, i) => sum + (i.price * i.quantity), 0) - totalDiscount);
+
         return {
           store: data.store || '店舗不明',
           date: data.date || new Date().toISOString().split('T')[0],
-          totalAmount,
-          totalDiscount: Number(data.totalDiscount) || 0,
+          totalAmount: finalTotalAmount,
+          totalDiscount,
           items
         };
       } catch (err) {
@@ -1227,6 +1266,16 @@
       const cancelScanBtn = document.getElementById('cancel-scan-btn');
       if (cancelScanBtn) {
         cancelScanBtn.addEventListener('click', () => this.closeScanModal());
+      }
+
+      // スキャン結果モーダルの合計金額・値引き手動変更リスナー
+      const draftTotalInput = document.getElementById('draft-total-amount');
+      if (draftTotalInput) {
+        draftTotalInput.addEventListener('input', () => this.renderDraftItems(false));
+      }
+      const draftDiscountInput = document.getElementById('draft-discount');
+      if (draftDiscountInput) {
+        draftDiscountInput.addEventListener('input', () => this.renderDraftItems(false));
       }
 
       const manualForm = document.getElementById('manual-entry-form');
@@ -1743,6 +1792,11 @@
       document.getElementById('draft-date').value = this.scannedDraft.date || new Date().toISOString().split('T')[0];
       document.getElementById('draft-discount').value = this.scannedDraft.totalDiscount || 0;
 
+      const totalInput = document.getElementById('draft-total-amount');
+      if (totalInput) {
+        totalInput.value = this.scannedDraft.totalAmount || 0;
+      }
+
       const previewWrap = document.getElementById('draft-image-preview-wrap');
       const previewImg = document.getElementById('draft-image-preview');
       if (previewWrap && previewImg) {
@@ -1757,20 +1811,20 @@
         }
       }
 
-      this.renderDraftItems();
+      this.renderDraftItems(false);
       modal.classList.add('active');
       if (window.lucide) window.lucide.createIcons();
     }
 
-    renderDraftItems() {
+    renderDraftItems(syncTotalInput = false) {
       const container = document.getElementById('draft-items-list');
       if (!container || !this.scannedDraft) return;
 
-      let totalAmount = 0;
+      let itemsSum = 0;
 
       container.innerHTML = this.scannedDraft.items.map((item, idx) => {
         const itemPrice = (item.price || 0) * (item.quantity || 1);
-        totalAmount += itemPrice;
+        itemsSum += itemPrice;
 
         return `
           <div class="draft-item-row" data-index="${idx}">
@@ -1782,7 +1836,7 @@
             </div>
             <div class="draft-row-bottom">
               <div class="draft-field">
-                <label>金額(円)</label>
+                <label>金額(税込・円)</label>
                 <input type="number" class="input-flat-num item-price" value="${item.price}" onchange="window.appUI.updateDraftItem(${idx}, 'price', this.value)">
               </div>
               <div class="draft-field">
@@ -1803,18 +1857,53 @@
         `;
       }).join('');
 
+      // 合計バッジと支払合計額のリアルタイム更新
       const totalDiscount = Number(document.getElementById('draft-discount')?.value) || 0;
-      const finalAmount = Math.max(0, totalAmount - totalDiscount);
+      const computedTotal = Math.max(0, itemsSum - totalDiscount);
+
+      const totalInput = document.getElementById('draft-total-amount');
+      let finalAmount = computedTotal;
+
+      if (totalInput) {
+        const currentInputValue = Number(totalInput.value);
+        if (syncTotalInput || (!currentInputValue && currentInputValue !== 0)) {
+          totalInput.value = computedTotal;
+          finalAmount = computedTotal;
+        } else {
+          finalAmount = currentInputValue;
+        }
+      }
+
       this.scannedDraft.totalAmount = finalAmount;
 
       const summaryEl = document.getElementById('draft-summary-badge');
       if (summaryEl) {
+        const diff = finalAmount - computedTotal;
+        let diffNotice = '';
+        if (diff > 0) {
+          diffNotice = `<span style="font-size: 10px; color: var(--color-primary-dark); margin-left: 6px; font-weight: 700;">(外税/消費税分: +¥${diff.toLocaleString()})</span>`;
+        } else if (diff < 0) {
+          diffNotice = `<span style="font-size: 10px; color: var(--text-muted); margin-left: 6px;">(品目合算: ¥${computedTotal.toLocaleString()})</span>`;
+        }
+
         summaryEl.innerHTML = `
           <span class="badge-total-price">合計: ¥${finalAmount.toLocaleString()}</span>
           <span class="badge-item-count" id="draft-item-count"><i data-lucide="shopping-cart"></i> ${this.scannedDraft.items.length} 品目</span>
+          ${diffNotice}
         `;
       }
       if (window.lucide) window.lucide.createIcons();
+    }
+
+    // 外税レシート等の全品目をワンクリックで税込(8%または10%)に換算
+    applyTaxToAllDraftItems(taxPercent = 8) {
+      if (!this.scannedDraft || !this.scannedDraft.items || !this.scannedDraft.items.length) return;
+      const rate = 1 + (taxPercent / 100);
+      this.scannedDraft.items.forEach(item => {
+        item.price = Math.round((Number(item.price) || 0) * rate);
+      });
+      this.renderDraftItems(true);
+      this.showToast(`全品目の金額に消費税(${taxPercent}%)を一括適用しました✨`);
     }
 
     updateDraftItem(idx, field, value) {
@@ -1830,13 +1919,13 @@
         item.isFood = value !== '日用品' && value !== 'その他';
       }
 
-      this.renderDraftItems();
+      this.renderDraftItems(false);
     }
 
     removeDraftItem(idx) {
       if (!this.scannedDraft || !this.scannedDraft.items) return;
       this.scannedDraft.items.splice(idx, 1);
-      this.renderDraftItems();
+      this.renderDraftItems(true);
     }
 
     async handleSaveScannedDraft() {
@@ -1845,8 +1934,16 @@
       const storeName = document.getElementById('draft-store').value.trim() || '店舗未記入';
       const date = document.getElementById('draft-date').value || new Date().toISOString().split('T')[0];
       const discount = Number(document.getElementById('draft-discount').value) || 0;
+      const totalInput = document.getElementById('draft-total-amount');
       const addToFridge = document.getElementById('draft-add-fridge').checked;
       const savePhoto = document.getElementById('draft-save-photo') ? document.getElementById('draft-save-photo').checked : false;
+
+      this.scannedDraft.store = storeName;
+      this.scannedDraft.date = date;
+      this.scannedDraft.totalDiscount = discount;
+      if (totalInput && totalInput.value) {
+        this.scannedDraft.totalAmount = Number(totalInput.value) || this.scannedDraft.totalAmount;
+      }
 
       let imageId = null;
       if (savePhoto && this.scannedDraft.receiptImage) {

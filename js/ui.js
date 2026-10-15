@@ -92,6 +92,16 @@ export class AppUI {
       cancelScanBtn.addEventListener('click', () => this.closeScanModal());
     }
 
+    // スキャン結果モーダルの合計金額・値引き手動変更リスナー
+    const draftTotalInput = document.getElementById('draft-total-amount');
+    if (draftTotalInput) {
+      draftTotalInput.addEventListener('input', () => this.renderDraftItems(false));
+    }
+    const draftDiscountInput = document.getElementById('draft-discount');
+    if (draftDiscountInput) {
+      draftDiscountInput.addEventListener('input', () => this.renderDraftItems(false));
+    }
+
     // 各種モーダルの閉じるボタン
     document.querySelectorAll('.modal-close-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -653,6 +663,11 @@ export class AppUI {
     document.getElementById('draft-date').value = data.date;
     document.getElementById('draft-discount').value = data.totalDiscount || 0;
 
+    const totalInput = document.getElementById('draft-total-amount');
+    if (totalInput) {
+      totalInput.value = data.totalAmount || 0;
+    }
+
     const draftSavePhoto = document.getElementById('draft-save-photo');
     if (draftSavePhoto) {
       draftSavePhoto.checked = !!store.settings.saveReceiptPhotos;
@@ -670,20 +685,20 @@ export class AppUI {
       }
     }
 
-    this.renderDraftItems();
+    this.renderDraftItems(false);
     modal.classList.add('active');
     if (window.lucide) window.lucide.createIcons();
   }
 
-  renderDraftItems() {
+  renderDraftItems(syncTotalInput = false) {
     const container = document.getElementById('draft-items-list');
     if (!container || !this.scannedDraft) return;
 
-    let totalAmount = 0;
+    let itemsSum = 0;
 
     container.innerHTML = this.scannedDraft.items.map((item, idx) => {
       const itemPrice = (item.price || 0) * (item.quantity || 1);
-      totalAmount += itemPrice;
+      itemsSum += itemPrice;
 
       return `
         <div class="draft-item-row" data-index="${idx}">
@@ -695,7 +710,7 @@ export class AppUI {
           </div>
           <div class="draft-row-bottom">
             <div class="draft-field">
-              <label>金額(円)</label>
+              <label>金額(税込・円)</label>
               <input type="number" class="input-flat-num item-price" value="${item.price}" onchange="window.appUI.updateDraftItem(${idx}, 'price', this.value)">
             </div>
             <div class="draft-field">
@@ -716,19 +731,53 @@ export class AppUI {
       `;
     }).join('');
 
-    // 合計バッジのリアルタイム更新
+    // 合計バッジと支払合計額のリアルタイム更新
     const totalDiscount = Number(document.getElementById('draft-discount')?.value) || 0;
-    const finalAmount = Math.max(0, totalAmount - totalDiscount);
+    const computedTotal = Math.max(0, itemsSum - totalDiscount);
+
+    const totalInput = document.getElementById('draft-total-amount');
+    let finalAmount = computedTotal;
+
+    if (totalInput) {
+      const currentInputValue = Number(totalInput.value);
+      if (syncTotalInput || (!currentInputValue && currentInputValue !== 0)) {
+        totalInput.value = computedTotal;
+        finalAmount = computedTotal;
+      } else {
+        finalAmount = currentInputValue;
+      }
+    }
+
     this.scannedDraft.totalAmount = finalAmount;
 
     const summaryEl = document.getElementById('draft-summary-badge');
     if (summaryEl) {
+      const diff = finalAmount - computedTotal;
+      let diffNotice = '';
+      if (diff > 0) {
+        diffNotice = `<span style="font-size: 10px; color: var(--color-primary-dark); margin-left: 6px; font-weight: 700;">(外税/消費税分: +¥${diff.toLocaleString()})</span>`;
+      } else if (diff < 0) {
+        diffNotice = `<span style="font-size: 10px; color: var(--text-muted); margin-left: 6px;">(品目合算: ¥${computedTotal.toLocaleString()})</span>`;
+      }
+
       summaryEl.innerHTML = `
         <span class="badge-total-price">合計: ¥${finalAmount.toLocaleString()}</span>
         <span class="badge-item-count" id="draft-item-count"><i data-lucide="shopping-cart"></i> ${this.scannedDraft.items.length} 品目</span>
+        ${diffNotice}
       `;
     }
     if (window.lucide) window.lucide.createIcons();
+  }
+
+  // 外税レシート等の全品目をワンクリックで税込(8%または10%)に換算
+  applyTaxToAllDraftItems(taxPercent = 8) {
+    if (!this.scannedDraft || !this.scannedDraft.items || !this.scannedDraft.items.length) return;
+    const rate = 1 + (taxPercent / 100);
+    this.scannedDraft.items.forEach(item => {
+      item.price = Math.round((Number(item.price) || 0) * rate);
+    });
+    this.renderDraftItems(true);
+    this.showToast(`全品目の金額に消費税(${taxPercent}%)を一括適用しました✨`);
   }
 
   updateDraftItem(idx, field, value) {
@@ -744,13 +793,13 @@ export class AppUI {
       item.isFood = value !== '日用品' && value !== 'その他';
     }
 
-    this.renderDraftItems();
+    this.renderDraftItems(false);
   }
 
   removeDraftItem(idx) {
     if (!this.scannedDraft) return;
     this.scannedDraft.items.splice(idx, 1);
-    this.renderDraftItems();
+    this.renderDraftItems(true);
   }
 
   saveScanDraft() {
@@ -759,6 +808,7 @@ export class AppUI {
     const storeName = document.getElementById('draft-store').value.trim() || '店舗未登録';
     const date = document.getElementById('draft-date').value || new Date().toISOString().split('T')[0];
     const discount = Number(document.getElementById('draft-discount').value) || 0;
+    const totalInput = document.getElementById('draft-total-amount');
     const addToFridge = document.getElementById('draft-add-fridge').checked;
     const draftSavePhoto = document.getElementById('draft-save-photo');
     const shouldSavePhoto = draftSavePhoto ? draftSavePhoto.checked : !!store.settings.saveReceiptPhotos;
@@ -766,6 +816,9 @@ export class AppUI {
     this.scannedDraft.store = storeName;
     this.scannedDraft.date = date;
     this.scannedDraft.totalDiscount = discount;
+    if (totalInput && totalInput.value) {
+      this.scannedDraft.totalAmount = Number(totalInput.value) || this.scannedDraft.totalAmount;
+    }
 
     if (!shouldSavePhoto) {
       this.scannedDraft.receiptImage = null;

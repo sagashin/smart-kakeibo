@@ -18,10 +18,16 @@ const SYSTEM_PROMPT = `
    - 対象商品の金額（price）から値引き分を差し引いた実支払額にするか、レシート全体の「値引き合計（totalDiscount）」に合算してください。
 3. 数量・単価・金額の対応:
    - 「@158 × 2」のように単価と個数が並んでいる場合、quantityを2、priceをその品目の支払合計額（単価×数量）として正しく対応づけてください。単価を誤って商品名や総額に混同しないでください。
-4. 税抜と税込・合計金額（totalAmount）の整合性:
-   - レシート最下部に記載された、利用者が実際に支払った最終の「合計金額（税込・値引適用後）」を totalAmount に設定してください。
-   - 「小計」「お預り額」「お釣り」「外税対象額」「内消費税等」などを合計金額と誤認しないでください。
-   - 各品目の金額（price）は、可能な限り税込実支払額として算出してください。
+4. 【最重要】消費税（8%・10%）と外税方式レシートの税込化ルール:
+   - 日本のスーパーやドラッグストアの多くは、各品目には「税抜（本体価格）」のみが印字され、末尾に「小計」「消費税等（8%）」「合計（税込）」が記載されています。
+   - 家計簿アプリとして正確に記録するため、【各品目の金額（price）は必ず「税込実支払金額」に換算】してください！
+     - 飲食料品（isFood: true）の場合: 税抜価格 × 1.08（端数は四捨五入）
+     - 日用品等の場合: 税抜価格 × 1.10（端数は四捨五入）
+     - すでにレシートが税込表示（内税方式やコンビニなど）の場合は、印字されている税込価格をそのまま使用してください。
+   - 【合計金額（totalAmount）の厳格な一致】:
+     - totalAmount はレシート最下部の「お買上合計」「領収金額」「お支払い合計」の【実際の最終支払税込金額】と完全に一致させてください。
+     - 各品目の price × quantity の合計（- totalDiscount）が、この totalAmount とピッタリ一致するように、端数（1〜2円程度）があれば品目の金額で調整してください。
+     - 「小計」「税抜対象額」「お預り額」「釣銭」を合計金額と誤認しないでください。
 5. 除外すべき非商品行:
    - 「ポイント利用」「ポイント付与」「チャージ額」「クレジット売上」「お預り」「釣銭」「登録番号」「店舗電話番号」などは購入品目に含めないでください（※レジ袋は日用品として含めて構いません）。
 6. 食品判定とカテゴリ・消費目安日数（shelfLifeDays）:
@@ -292,7 +298,7 @@ function validateAndFormatReceiptData(data) {
     throw new Error('解析結果が無効です。');
   }
 
-  const items = (data.items || []).map(item => {
+  let items = (data.items || []).map(item => {
     let isFood = item.isFood;
     let category = item.category || 'その他';
     let shelfLife = item.shelfLifeDays;
@@ -311,13 +317,47 @@ function validateAndFormatReceiptData(data) {
     };
   });
 
-  const totalAmount = Number(data.totalAmount) || items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+  const rawTotalAmount = Number(data.totalAmount) || 0;
+  const totalDiscount = Number(data.totalDiscount) || 0;
+  const itemsSum = items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+
+  // 外税レシート自動検知＆税込自動換算:
+  // レシートの最終支払額 (rawTotalAmount + totalDiscount) と、品目合計 (itemsSum) の比率をチェック
+  const effectiveTotalBeforeDiscount = rawTotalAmount > 0 ? (rawTotalAmount + totalDiscount) : 0;
+  if (itemsSum > 0 && effectiveTotalBeforeDiscount > 0) {
+    const taxRatio = effectiveTotalBeforeDiscount / itemsSum;
+    // 比率が 1.055 〜 1.13 の範囲にある場合、各品目が税抜で印字されていたと判定
+    if (taxRatio >= 1.055 && taxRatio <= 1.13) {
+      console.log(`[Receipt] 外税レシートを検知（税率比率: ${taxRatio.toFixed(3)}）。品目を税込金額に自動換算します。`);
+      let runningSum = 0;
+      items = items.map(item => {
+        // 食品なら8%、日用品なら10%（比率が全体で8%寄りの場合は8%優先）
+        const rate = (taxRatio < 1.09) ? 1.08 : (item.isFood ? 1.08 : 1.10);
+        const taxIncluded = Math.round(item.price * rate);
+        runningSum += taxIncluded * item.quantity;
+        return {
+          ...item,
+          price: taxIncluded
+        };
+      });
+
+      // 最終支払額と端数（1〜2円）のズレがある場合、最後の品目で微調整してピッタリ合致させる
+      const diff = effectiveTotalBeforeDiscount - runningSum;
+      if (Math.abs(diff) <= items.length * 2 && items.length > 0) {
+        items[items.length - 1].price += diff;
+      }
+    }
+  }
+
+  const finalTotalAmount = rawTotalAmount > 0 
+    ? rawTotalAmount 
+    : Math.max(0, items.reduce((sum, i) => sum + (i.price * i.quantity), 0) - totalDiscount);
 
   return {
     store: data.store || '店舗不明',
     date: data.date || new Date().toISOString().split('T')[0],
-    totalAmount,
-    totalDiscount: Number(data.totalDiscount) || 0,
+    totalAmount: finalTotalAmount,
+    totalDiscount,
     items
   };
 }
