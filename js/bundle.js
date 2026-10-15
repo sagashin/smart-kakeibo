@@ -148,6 +148,110 @@
   }
 
   /* ==========================================================================
+     1.5 レシート画像 IndexedDB ストレージ
+     LocalStorageの容量制限（約5MB）を回避し、高画質な写真を安全に保存
+     ========================================================================== */
+  class ReceiptImageDB {
+    static DB_NAME = 'SmartKakeiboDB';
+    static STORE_NAME = 'receipt_images';
+    static DB_VERSION = 1;
+
+    static openDB() {
+      return new Promise((resolve) => {
+        if (!window.indexedDB) {
+          resolve(null);
+          return;
+        }
+        try {
+          const req = indexedDB.open(this.DB_NAME, this.DB_VERSION);
+          req.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains(this.STORE_NAME)) {
+              db.createObjectStore(this.STORE_NAME, { keyPath: 'id' });
+            }
+          };
+          req.onsuccess = (e) => resolve(e.target.result);
+          req.onerror = () => resolve(null);
+        } catch (e) {
+          console.warn('IndexedDB open error:', e);
+          resolve(null);
+        }
+      });
+    }
+
+    static async saveImage(id, dataUrl) {
+      if (!id || !dataUrl) return false;
+      try {
+        const db = await this.openDB();
+        if (!db) return false;
+        return new Promise((resolve) => {
+          const tx = db.transaction([this.STORE_NAME], 'readwrite');
+          const store = tx.objectStore(this.STORE_NAME);
+          store.put({ id, dataUrl, createdAt: Date.now() });
+          tx.oncomplete = () => resolve(true);
+          tx.onerror = () => resolve(false);
+        });
+      } catch (e) {
+        console.warn('Failed to save image to IndexedDB:', e);
+        return false;
+      }
+    }
+
+    static async getImage(id) {
+      if (!id) return null;
+      try {
+        const db = await this.openDB();
+        if (!db) return null;
+        return new Promise((resolve) => {
+          const tx = db.transaction([this.STORE_NAME], 'readonly');
+          const store = tx.objectStore(this.STORE_NAME);
+          const req = store.get(id);
+          req.onsuccess = () => resolve(req.result ? req.result.dataUrl : null);
+          req.onerror = () => resolve(null);
+        });
+      } catch (e) {
+        console.warn('Failed to get image from IndexedDB:', e);
+        return null;
+      }
+    }
+
+    static async deleteImage(id) {
+      if (!id) return false;
+      try {
+        const db = await this.openDB();
+        if (!db) return false;
+        return new Promise((resolve) => {
+          const tx = db.transaction([this.STORE_NAME], 'readwrite');
+          const store = tx.objectStore(this.STORE_NAME);
+          store.delete(id);
+          tx.oncomplete = () => resolve(true);
+          tx.onerror = () => resolve(false);
+        });
+      } catch (e) {
+        console.warn('Failed to delete image from IndexedDB:', e);
+        return false;
+      }
+    }
+
+    static async clearAllImages() {
+      try {
+        const db = await this.openDB();
+        if (!db) return false;
+        return new Promise((resolve) => {
+          const tx = db.transaction([this.STORE_NAME], 'readwrite');
+          const store = tx.objectStore(this.STORE_NAME);
+          store.clear();
+          tx.oncomplete = () => resolve(true);
+          tx.onerror = () => resolve(false);
+        });
+      } catch (e) {
+        console.warn('Failed to clear IndexedDB images:', e);
+        return false;
+      }
+    }
+  }
+
+  /* ==========================================================================
      2. データストアモジュール
      ========================================================================== */
   const STORAGE_KEYS = {
@@ -161,7 +265,8 @@
     geminiApiKey: '',
     monthlyBudget: 75000,
     dailyCalorieTarget: 2200,
-    useDemoScanner: true
+    useDemoScanner: true,
+    saveReceiptPhotos: false // デフォルトOFF: 解析後は写真破棄し家計簿データのみ保存（容量完全ゼロ）
   };
 
   class AppStore {
@@ -186,6 +291,20 @@
 
         if (storedTx !== null) {
           this.transactions = JSON.parse(storedTx);
+          // 既存データに receiptImage が残っている場合は IndexedDB へ退避し LocalStorage を軽量化
+          let migrated = false;
+          this.transactions.forEach(tx => {
+            if (tx.receiptImage) {
+              ReceiptImageDB.saveImage(tx.id, tx.receiptImage);
+              tx.hasImage = true;
+              tx.imageId = tx.id;
+              delete tx.receiptImage;
+              migrated = true;
+            }
+          });
+          if (migrated) {
+            this.saveTransactions();
+          }
         } else if (!isInit) {
           // 初回アクセス時のみデモデータを生成
           this.transactions = this.generateInitialDemoData();
@@ -216,6 +335,7 @@
       localStorage.setItem(STORAGE_KEYS.INITIALIZED, 'true');
       this.saveTransactions();
       this.saveFridge();
+      ReceiptImageDB.clearAllImages();
       this.notify();
     }
 
@@ -230,10 +350,32 @@
 
     saveTransactions() {
       try {
-        localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(this.transactions));
+        // LocalStorageの容量枯渇（QuotaExceededError）を防ぐため、
+        // 万一巨大なBase64画像文字列が含まれていても除外して軽量なメタデータのみ保存
+        const safeTransactions = this.transactions.map(tx => {
+          if (tx.receiptImage) {
+            const { receiptImage, ...rest } = tx;
+            return { ...rest, hasImage: true, imageId: tx.id };
+          }
+          return tx;
+        });
+        localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(safeTransactions));
         this.notify();
       } catch (err) {
-        console.error('Failed to save transactions:', err);
+        console.error('Failed to save transactions to localStorage:', err);
+        if (err.name === 'QuotaExceededError' || err.code === 22 || err.code === 1014) {
+          try {
+            const pruned = this.transactions.slice(0, 50).map(({ receiptImage, memo, ...rest }) => ({
+              ...rest,
+              memo: (memo || '').slice(0, 50)
+            }));
+            localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(pruned));
+            this.notify();
+            console.warn('Saved transactions after emergency pruning due to quota limit.');
+          } catch (retryErr) {
+            alert('ブラウザの保存容量制限により家計簿データを保存できませんでした。');
+          }
+        }
       }
     }
 
@@ -314,9 +456,15 @@
         category: record.category || (items[0] ? items[0].category : '食費'),
         items,
         memo: record.memo || '',
-        receiptImage: record.receiptImage || null,
+        hasImage: !!record.receiptImage,
+        imageId: record.receiptImage ? id : null,
         createdAt: new Date().toISOString()
       };
+
+      // レシート写真は IndexedDB に安全に保存（LocalStorageの容量を圧迫しない）
+      if (record.receiptImage) {
+        ReceiptImageDB.saveImage(id, record.receiptImage);
+      }
 
       this.transactions.unshift(newTx);
       this.saveTransactions();
@@ -340,6 +488,7 @@
     deleteTransaction(id) {
       this.transactions = this.transactions.filter(t => t.id !== id);
       this.saveTransactions();
+      ReceiptImageDB.deleteImage(id);
     }
 
     deleteTransactionItem(txId, itemId) {
@@ -1027,6 +1176,16 @@
         manualForm.addEventListener('submit', (e) => this.handleManualSubmit(e));
       }
 
+      // スキャン確認モーダルの写真サムネイル拡大
+      const draftPreviewImg = document.getElementById('draft-image-preview');
+      if (draftPreviewImg) {
+        draftPreviewImg.addEventListener('click', () => {
+          if (this.scannedDraft && this.scannedDraft.receiptImage) {
+            this.showImageModal(this.scannedDraft.receiptImage, `${this.scannedDraft.date} ${this.scannedDraft.store}`);
+          }
+        });
+      }
+
       // スキャン結果保存
       const saveScanBtn = document.getElementById('save-scan-btn');
       if (saveScanBtn) {
@@ -1055,10 +1214,12 @@
           const apiKey = document.getElementById('cfg-api-key').value.trim();
           const budget = Number(document.getElementById('cfg-budget').value) || 75000;
           const calTarget = Number(document.getElementById('cfg-cal-target').value) || 2200;
+          const savePhoto = document.getElementById('cfg-save-photo') ? document.getElementById('cfg-save-photo').checked : false;
           store.saveSettings({
             geminiApiKey: apiKey,
             monthlyBudget: budget,
-            dailyCalorieTarget: calTarget
+            dailyCalorieTarget: calTarget,
+            saveReceiptPhotos: savePhoto
           });
           this.showToast('設定を保存しました✨');
         });
@@ -1323,6 +1484,11 @@
                 <i data-lucide="tag"></i> ¥${tx.totalDiscount} 節約
               </span>
             ` : ''}
+            ${(tx.hasImage || tx.imageId || tx.receiptImage) ? `
+              <button type="button" class="pill-badge photo-badge" onclick="event.stopPropagation(); window.appUI.viewReceiptPhoto('${tx.id}')" title="レシート原本の写真を見る">
+                <i data-lucide="image"></i> 写真
+              </button>
+            ` : ''}
           </div>
 
           <div class="tx-items-preview" id="items-${tx.id}">
@@ -1414,10 +1580,12 @@
       const apiKeyInput = document.getElementById('cfg-api-key');
       const budgetInput = document.getElementById('cfg-budget');
       const calTargetInput = document.getElementById('cfg-cal-target');
+      const savePhotoInput = document.getElementById('cfg-save-photo');
 
       if (apiKeyInput) apiKeyInput.value = store.settings.geminiApiKey || '';
       if (budgetInput) budgetInput.value = store.settings.monthlyBudget || 75000;
       if (calTargetInput) calTargetInput.value = store.settings.dailyCalorieTarget || 2200;
+      if (savePhotoInput) savePhotoInput.checked = !!store.settings.saveReceiptPhotos;
     }
 
     async handleReceiptUpload(e) {
@@ -1427,12 +1595,14 @@
       this.showScanningOverlay();
 
       try {
-        const base64 = await this.fileToBase64(file);
+        // スマホカメラの高画質写真（数MB〜10MB）をCanvasで軽量化圧縮（約70〜100KB）
+        // これにより通信が高速化し、LocalStorageの容量上限エラーを完全に防ぎます
+        const base64 = await this.compressImage(file, 1200, 0.8) || await this.fileToBase64(file);
         const apiKey = store.settings.geminiApiKey;
 
         let result;
         if (apiKey) {
-          result = await parseReceiptWithGemini(base64, file.type, apiKey);
+          result = await parseReceiptWithGemini(base64, 'image/jpeg', apiKey);
         } else {
           result = await simulateReceiptScan(this.selectedDemoIndex++);
           this.showToast('※APIキー未設定のためデモAI認識を実行しました', 3500);
@@ -1479,6 +1649,23 @@
       document.getElementById('draft-store').value = data.store;
       document.getElementById('draft-date').value = data.date;
       document.getElementById('draft-discount').value = data.totalDiscount || 0;
+
+      const draftSavePhoto = document.getElementById('draft-save-photo');
+      if (draftSavePhoto) {
+        draftSavePhoto.checked = !!store.settings.saveReceiptPhotos;
+      }
+
+      // 撮影した写真のサムネイルを表示
+      const previewWrap = document.getElementById('draft-image-preview-wrap');
+      const previewImg = document.getElementById('draft-image-preview');
+      if (previewWrap && previewImg) {
+        if (imageBase64) {
+          previewImg.src = imageBase64;
+          previewWrap.style.display = 'block';
+        } else {
+          previewWrap.style.display = 'none';
+        }
+      }
 
       this.renderDraftItems();
       modal.classList.add('active');
@@ -1585,10 +1772,17 @@
       const date = document.getElementById('draft-date').value || new Date().toISOString().split('T')[0];
       const discount = Number(document.getElementById('draft-discount').value) || 0;
       const addToFridge = document.getElementById('draft-add-fridge').checked;
+      const draftSavePhoto = document.getElementById('draft-save-photo');
+      const shouldSavePhoto = draftSavePhoto ? draftSavePhoto.checked : !!store.settings.saveReceiptPhotos;
 
       this.scannedDraft.store = storeName;
       this.scannedDraft.date = date;
       this.scannedDraft.totalDiscount = discount;
+
+      // 写真保存OFFの場合は写真データを破棄（家計簿・カロリーデータのみ軽量保存）
+      if (!shouldSavePhoto) {
+        this.scannedDraft.receiptImage = null;
+      }
 
       store.addTransaction(this.scannedDraft, addToFridge);
 
@@ -1757,6 +1951,97 @@
       setTimeout(() => {
         toast.classList.remove('show');
       }, duration);
+    }
+
+    compressImage(file, maxWidth = 1200, quality = 0.8) {
+      return new Promise((resolve) => {
+        if (!file || !file.type.startsWith('image/')) {
+          resolve(null);
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            try {
+              let width = img.width;
+              let height = img.height;
+              if (width > maxWidth || height > maxWidth) {
+                if (width > height) {
+                  height = Math.round((height * maxWidth) / width);
+                  width = maxWidth;
+                } else {
+                  width = Math.round((width * maxWidth) / height);
+                  height = maxWidth;
+                }
+              }
+              const canvas = document.createElement('canvas');
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0, width, height);
+              const compressed = canvas.toDataURL('image/jpeg', quality);
+              resolve(compressed);
+            } catch (err) {
+              console.warn('Image compression fallback:', err);
+              resolve(e.target.result);
+            }
+          };
+          img.onerror = () => resolve(e.target.result);
+          img.src = e.target.result;
+        };
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async viewReceiptPhoto(txId) {
+      const modal = document.getElementById('receipt-photo-modal');
+      const imgEl = document.getElementById('receipt-photo-img');
+      const captionEl = document.getElementById('receipt-photo-caption');
+      const loadingEl = document.getElementById('receipt-photo-loading');
+      if (!modal || !imgEl) return;
+
+      const tx = store.transactions.find(t => t.id === txId);
+      if (captionEl) {
+        captionEl.textContent = tx ? `${tx.date} ${tx.store} (¥${tx.totalAmount.toLocaleString()})` : '';
+      }
+
+      imgEl.style.display = 'none';
+      if (loadingEl) loadingEl.style.display = 'block';
+      modal.classList.add('active');
+
+      let dataUrl = tx?.receiptImage || null;
+      if (!dataUrl) {
+        dataUrl = await ReceiptImageDB.getImage(txId);
+      }
+
+      if (loadingEl) loadingEl.style.display = 'none';
+      if (dataUrl) {
+        imgEl.src = dataUrl;
+        imgEl.style.display = 'inline-block';
+      } else {
+        if (captionEl) {
+          captionEl.textContent = 'レシート画像が見つかりませんでした（保存されていないか削除されました）';
+        }
+      }
+
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    showImageModal(dataUrl, title = '') {
+      const modal = document.getElementById('receipt-photo-modal');
+      const imgEl = document.getElementById('receipt-photo-img');
+      const captionEl = document.getElementById('receipt-photo-caption');
+      const loadingEl = document.getElementById('receipt-photo-loading');
+      if (!modal || !imgEl) return;
+
+      if (loadingEl) loadingEl.style.display = 'none';
+      if (captionEl) captionEl.textContent = title;
+      imgEl.src = dataUrl;
+      imgEl.style.display = 'inline-block';
+      modal.classList.add('active');
+      if (window.lucide) window.lucide.createIcons();
     }
 
     fileToBase64(file) {

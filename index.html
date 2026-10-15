@@ -342,6 +342,19 @@
             <input type="number" id="cfg-cal-target" class="form-control" value="2200">
           </div>
 
+          <h4 style="font-size: 13px; font-weight: 700; margin: 16px 0 12px 0;">ストレージ容量・データ設定</h4>
+          <div class="form-group" style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;">
+            <div>
+              <label for="cfg-save-photo" style="font-size: 13px; font-weight: 700; margin-bottom: 2px; cursor: pointer;">
+                レシート原本の写真も保存する
+              </label>
+              <small style="font-size: 11px; color: var(--text-muted); display: block; line-height: 1.4;">
+                <strong>OFF（推奨・容量節約）</strong>: AI認識後に写真は自動破棄し、品目・金額・カロリーデータのみ保存します。何千件記録しても容量を一切圧迫しません。
+              </small>
+            </div>
+            <input type="checkbox" id="cfg-save-photo" style="width: 20px; height: 20px; margin-top: 2px; cursor: pointer;">
+          </div>
+
           <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 8px;">
             設定を保存する
           </button>
@@ -417,6 +430,12 @@
           <span class="badge-total-cal"><i data-lucide="flame"></i> 0 kcal</span>
         </div>
 
+        <!-- 撮影したレシート写真のプレビュー表示 -->
+        <div id="draft-image-preview-wrap" style="display: none; margin-bottom: 12px; text-align: center;">
+          <img id="draft-image-preview" src="" alt="撮影したレシート写真" style="max-height: 120px; max-width: 100%; border-radius: 8px; border: 1px solid var(--border-light); cursor: pointer; object-fit: contain; box-shadow: var(--shadow-sm);" title="タップして拡大表示">
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 3px;">📷 撮影した写真 (タップで拡大確認)</div>
+        </div>
+
         <div class="form-group">
           <label>店舗名</label>
           <input type="text" id="draft-store" class="form-control" placeholder="店舗名">
@@ -444,11 +463,42 @@
           <input type="checkbox" id="draft-add-fridge" checked style="width: 18px; height: 18px;">
           <label for="draft-add-fridge" style="font-size: 12px; font-weight: 700;">食品を冷蔵庫ストックに追加する</label>
         </div>
+
+        <div style="margin-top: 8px; display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" id="draft-save-photo" style="width: 18px; height: 18px;">
+          <label for="draft-save-photo" style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">レシート写真も端末に保存する (※容量節約のため通常はOFF推奨)</label>
+        </div>
       </div>
 
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" onclick="window.appUI.closeScanModal()" style="flex: 1;">キャンセル</button>
         <button type="button" id="save-scan-btn" class="btn btn-primary" style="flex: 2;">家計簿に保存する</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       モーダル: レシート写真プレビュー
+       ========================================== -->
+  <div id="receipt-photo-modal" class="modal-overlay">
+    <div class="modal-sheet" style="max-height: 92vh; display: flex; flex-direction: column;">
+      <div class="modal-header">
+        <div class="modal-title"><i data-lucide="image" style="color: var(--color-primary); display: inline;"></i> レシート原本写真</div>
+        <button type="button" class="btn-icon-subtle modal-close-btn">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+
+      <div class="modal-body" style="text-align: center; padding: 14px; overflow-y: auto; flex: 1;">
+        <div id="receipt-photo-loading" style="display: none; padding: 30px; color: var(--text-muted); font-size: 13px;">
+          画像を読み込み中...
+        </div>
+        <img id="receipt-photo-img" src="" alt="レシート写真" style="max-width: 100%; max-height: 60vh; border-radius: 8px; object-fit: contain; box-shadow: var(--shadow-md); display: none;">
+        <div id="receipt-photo-caption" style="margin-top: 10px; font-size: 12px; font-weight: 700; color: var(--text-secondary);"></div>
+      </div>
+
+      <div class="modal-footer" style="padding: 10px 16px 14px 16px; background: none;">
+        <button type="button" class="btn btn-secondary modal-close-btn" style="width: 100%;">閉じる</button>
       </div>
     </div>
   </div>
@@ -531,6 +581,6 @@
   <div id="toast-notification" class="toast">記録を保存しました！</div>
 
   <!-- Scripts: self-contained bundle for seamless local file & server execution -->
-  <script src="./js/bundle.js?v=20261015_03"></script>
+  <script src="./js/bundle.js?v=20261015_05"></script>
 </body>
 </html>

@@ -14,8 +14,109 @@ const DEFAULT_SETTINGS = {
   geminiApiKey: '',
   monthlyBudget: 75000,
   dailyCalorieTarget: 2200,
-  useDemoScanner: true
+  useDemoScanner: true,
+  saveReceiptPhotos: false // デフォルトOFF: 解析後は写真破棄し家計簿データのみ保存（容量完全ゼロ）
 };
+
+export class ReceiptImageDB {
+  static DB_NAME = 'SmartKakeiboDB';
+  static STORE_NAME = 'receipt_images';
+  static DB_VERSION = 1;
+
+  static openDB() {
+    return new Promise((resolve) => {
+      if (!window.indexedDB) {
+        resolve(null);
+        return;
+      }
+      try {
+        const req = indexedDB.open(this.DB_NAME, this.DB_VERSION);
+        req.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains(this.STORE_NAME)) {
+            db.createObjectStore(this.STORE_NAME, { keyPath: 'id' });
+          }
+        };
+        req.onsuccess = (e) => resolve(e.target.result);
+        req.onerror = () => resolve(null);
+      } catch (e) {
+        console.warn('IndexedDB open error:', e);
+        resolve(null);
+      }
+    });
+  }
+
+  static async saveImage(id, dataUrl) {
+    if (!id || !dataUrl) return false;
+    try {
+      const db = await this.openDB();
+      if (!db) return false;
+      return new Promise((resolve) => {
+        const tx = db.transaction([this.STORE_NAME], 'readwrite');
+        const store = tx.objectStore(this.STORE_NAME);
+        store.put({ id, dataUrl, createdAt: Date.now() });
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+      });
+    } catch (e) {
+      console.warn('Failed to save image to IndexedDB:', e);
+      return false;
+    }
+  }
+
+  static async getImage(id) {
+    if (!id) return null;
+    try {
+      const db = await this.openDB();
+      if (!db) return null;
+      return new Promise((resolve) => {
+        const tx = db.transaction([this.STORE_NAME], 'readonly');
+        const store = tx.objectStore(this.STORE_NAME);
+        const req = store.get(id);
+        req.onsuccess = () => resolve(req.result ? req.result.dataUrl : null);
+        req.onerror = () => resolve(null);
+      });
+    } catch (e) {
+      console.warn('Failed to get image from IndexedDB:', e);
+      return null;
+    }
+  }
+
+  static async deleteImage(id) {
+    if (!id) return false;
+    try {
+      const db = await this.openDB();
+      if (!db) return false;
+      return new Promise((resolve) => {
+        const tx = db.transaction([this.STORE_NAME], 'readwrite');
+        const store = tx.objectStore(this.STORE_NAME);
+        store.delete(id);
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+      });
+    } catch (e) {
+      console.warn('Failed to delete image from IndexedDB:', e);
+      return false;
+    }
+  }
+
+  static async clearAllImages() {
+    try {
+      const db = await this.openDB();
+      if (!db) return false;
+      return new Promise((resolve) => {
+        const tx = db.transaction([this.STORE_NAME], 'readwrite');
+        const store = tx.objectStore(this.STORE_NAME);
+        store.clear();
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+      });
+    } catch (e) {
+      console.warn('Failed to clear IndexedDB images:', e);
+      return false;
+    }
+  }
+}
 
 export class AppStore {
   constructor() {
@@ -36,6 +137,19 @@ export class AppStore {
       const storedTx = localStorage.getItem(STORAGE_KEYS.TRANSACTIONS);
       if (storedTx) {
         this.transactions = JSON.parse(storedTx);
+        let migrated = false;
+        this.transactions.forEach(tx => {
+          if (tx.receiptImage) {
+            ReceiptImageDB.saveImage(tx.id, tx.receiptImage);
+            tx.hasImage = true;
+            tx.imageId = tx.id;
+            delete tx.receiptImage;
+            migrated = true;
+          }
+        });
+        if (migrated) {
+          this.saveTransactions();
+        }
       } else {
         // 初回ロード時はリアルなデモデータをシード
         this.transactions = this.generateInitialDemoData();
@@ -56,12 +170,38 @@ export class AppStore {
     }
   }
 
+  clearAllData() {
+    this.transactions = [];
+    this.fridgeItems = [];
+    this.saveTransactions();
+    this.saveFridge();
+    ReceiptImageDB.clearAllImages();
+    this.notify();
+  }
+
   saveTransactions() {
     try {
-      localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(this.transactions));
+      const safeTransactions = this.transactions.map(tx => {
+        if (tx.receiptImage) {
+          const { receiptImage, ...rest } = tx;
+          return { ...rest, hasImage: true, imageId: tx.id };
+        }
+        return tx;
+      });
+      localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(safeTransactions));
       this.notify();
     } catch (err) {
       console.error('Failed to save transactions:', err);
+      if (err.name === 'QuotaExceededError' || err.code === 22 || err.code === 1014) {
+        try {
+          const pruned = this.transactions.slice(0, 50).map(({ receiptImage, memo, ...rest }) => ({
+            ...rest,
+            memo: (memo || '').slice(0, 50)
+          }));
+          localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(pruned));
+          this.notify();
+        } catch (e) {}
+      }
     }
   }
 
@@ -145,9 +285,14 @@ export class AppStore {
       category: record.category || (items[0] ? items[0].category : '食費'),
       items,
       memo: record.memo || '',
-      receiptImage: record.receiptImage || null,
+      hasImage: !!record.receiptImage,
+      imageId: record.receiptImage ? id : null,
       createdAt: new Date().toISOString()
     };
+
+    if (record.receiptImage) {
+      ReceiptImageDB.saveImage(id, record.receiptImage);
+    }
 
     this.transactions.unshift(newTx);
     this.saveTransactions();
@@ -172,6 +317,7 @@ export class AppStore {
   deleteTransaction(id) {
     this.transactions = this.transactions.filter(t => t.id !== id);
     this.saveTransactions();
+    ReceiptImageDB.deleteImage(id);
   }
 
   calculateExpiry(baseDateStr, days) {

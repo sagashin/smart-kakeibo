@@ -232,6 +232,23 @@
   height: 12px;
 }
 
+.photo-badge {
+  background: #EEF2FF;
+  color: #4F46E5;
+  border: 1px solid #C7D2FE;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.photo-badge:hover {
+  background: #E0E7FF;
+  transform: translateY(-1px);
+}
+.photo-badge i {
+  width: 12px;
+  height: 12px;
+}
+
+
 /* --- ボタン類 --- */
 .btn {
   display: inline-flex;

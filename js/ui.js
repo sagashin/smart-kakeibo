@@ -1,7 +1,7 @@
 /**
  * UI操作・レンダリング・インタラクションコントローラー
  */
-import { store } from './store.js';
+import { store, ReceiptImageDB } from './store.js';
 import { parseReceiptWithGemini, simulateReceiptScan, DEMO_RECEIPTS } from './gemini.js';
 import { renderCharts } from './charts.js';
 import { estimateFoodCalories, FOOD_DATABASE } from './calorie-db.js';
@@ -71,6 +71,16 @@ export class AppUI {
       manualForm.addEventListener('submit', (e) => this.handleManualSubmit(e));
     }
 
+    // スキャン結果確認ボトムシートの写真サムネイル拡大
+    const draftPreviewImg = document.getElementById('draft-image-preview');
+    if (draftPreviewImg) {
+      draftPreviewImg.addEventListener('click', () => {
+        if (this.scannedDraft && this.scannedDraft.receiptImage) {
+          this.showImageModal(this.scannedDraft.receiptImage, `${this.scannedDraft.date} ${this.scannedDraft.store}`);
+        }
+      });
+    }
+
     // スキャン結果確認ボトムシートの保存ボタン
     const saveScanBtn = document.getElementById('save-scan-btn');
     if (saveScanBtn) {
@@ -99,10 +109,12 @@ export class AppUI {
         const apiKey = document.getElementById('cfg-api-key').value.trim();
         const budget = Number(document.getElementById('cfg-budget').value) || 75000;
         const calTarget = Number(document.getElementById('cfg-cal-target').value) || 2200;
+        const savePhoto = document.getElementById('cfg-save-photo') ? document.getElementById('cfg-save-photo').checked : false;
         store.saveSettings({
           geminiApiKey: apiKey,
           monthlyBudget: budget,
-          dailyCalorieTarget: calTarget
+          dailyCalorieTarget: calTarget,
+          saveReceiptPhotos: savePhoto
         });
         this.showToast('設定を保存しました✨');
       });
@@ -380,6 +392,11 @@ export class AppUI {
               <i data-lucide="tag"></i> ¥${tx.totalDiscount} 節約
             </span>
           ` : ''}
+          ${(tx.hasImage || tx.imageId || tx.receiptImage) ? `
+            <button type="button" class="pill-badge photo-badge" onclick="event.stopPropagation(); window.appUI.viewReceiptPhoto('${tx.id}')" title="レシート原本の写真を見る">
+              <i data-lucide="image"></i> 写真
+            </button>
+          ` : ''}
         </div>
 
         <div class="tx-items-preview">
@@ -407,10 +424,12 @@ export class AppUI {
     const apiKeyInput = document.getElementById('cfg-api-key');
     const budgetInput = document.getElementById('cfg-budget');
     const calTargetInput = document.getElementById('cfg-cal-target');
+    const savePhotoInput = document.getElementById('cfg-save-photo');
 
     if (apiKeyInput) apiKeyInput.value = store.settings.geminiApiKey || '';
     if (budgetInput) budgetInput.value = store.settings.monthlyBudget || 75000;
     if (calTargetInput) calTargetInput.value = store.settings.dailyCalorieTarget || 2200;
+    if (savePhotoInput) savePhotoInput.checked = !!store.settings.saveReceiptPhotos;
   }
 
   // --- レシート画像読み取り & 解析処理 ---
@@ -421,12 +440,13 @@ export class AppUI {
     this.showScanningOverlay();
 
     try {
-      const base64 = await this.fileToBase64(file);
+      // スマホカメラの高画質写真をCanvasで軽量化圧縮（約70〜100KB）
+      const base64 = await this.compressImage(file, 1200, 0.8) || await this.fileToBase64(file);
       const apiKey = store.settings.geminiApiKey;
 
       let result;
       if (apiKey) {
-        result = await parseReceiptWithGemini(base64, file.type, apiKey);
+        result = await parseReceiptWithGemini(base64, 'image/jpeg', apiKey);
       } else {
         // APIキー未設定時はデモスキャンで代替し、通知を表示
         result = await simulateReceiptScan(this.selectedDemoIndex++);
@@ -479,6 +499,23 @@ export class AppUI {
     document.getElementById('draft-store').value = data.store;
     document.getElementById('draft-date').value = data.date;
     document.getElementById('draft-discount').value = data.totalDiscount || 0;
+
+    const draftSavePhoto = document.getElementById('draft-save-photo');
+    if (draftSavePhoto) {
+      draftSavePhoto.checked = !!store.settings.saveReceiptPhotos;
+    }
+
+    // 撮影した写真のサムネイルを表示
+    const previewWrap = document.getElementById('draft-image-preview-wrap');
+    const previewImg = document.getElementById('draft-image-preview');
+    if (previewWrap && previewImg) {
+      if (imageBase64) {
+        previewImg.src = imageBase64;
+        previewWrap.style.display = 'block';
+      } else {
+        previewWrap.style.display = 'none';
+      }
+    }
 
     this.renderDraftItems();
     modal.classList.add('active');
@@ -587,10 +624,16 @@ export class AppUI {
     const date = document.getElementById('draft-date').value || new Date().toISOString().split('T')[0];
     const discount = Number(document.getElementById('draft-discount').value) || 0;
     const addToFridge = document.getElementById('draft-add-fridge').checked;
+    const draftSavePhoto = document.getElementById('draft-save-photo');
+    const shouldSavePhoto = draftSavePhoto ? draftSavePhoto.checked : !!store.settings.saveReceiptPhotos;
 
     this.scannedDraft.store = storeName;
     this.scannedDraft.date = date;
     this.scannedDraft.totalDiscount = discount;
+
+    if (!shouldSavePhoto) {
+      this.scannedDraft.receiptImage = null;
+    }
 
     store.addTransaction(this.scannedDraft, addToFridge);
 
@@ -765,6 +808,97 @@ export class AppUI {
     setTimeout(() => {
       toast.classList.remove('show');
     }, duration);
+  }
+
+  compressImage(file, maxWidth = 1200, quality = 0.8) {
+    return new Promise((resolve) => {
+      if (!file || !file.type.startsWith('image/')) {
+        resolve(null);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          try {
+            let width = img.width;
+            let height = img.height;
+            if (width > maxWidth || height > maxWidth) {
+              if (width > height) {
+                height = Math.round((height * maxWidth) / width);
+                width = maxWidth;
+              } else {
+                width = Math.round((width * maxWidth) / height);
+                height = maxWidth;
+              }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            const compressed = canvas.toDataURL('image/jpeg', quality);
+            resolve(compressed);
+          } catch (err) {
+            console.warn('Image compression fallback:', err);
+            resolve(e.target.result);
+          }
+        };
+        img.onerror = () => resolve(e.target.result);
+        img.src = e.target.result;
+      };
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async viewReceiptPhoto(txId) {
+    const modal = document.getElementById('receipt-photo-modal');
+    const imgEl = document.getElementById('receipt-photo-img');
+    const captionEl = document.getElementById('receipt-photo-caption');
+    const loadingEl = document.getElementById('receipt-photo-loading');
+    if (!modal || !imgEl) return;
+
+    const tx = store.transactions.find(t => t.id === txId);
+    if (captionEl) {
+      captionEl.textContent = tx ? `${tx.date} ${tx.store} (¥${tx.totalAmount.toLocaleString()})` : '';
+    }
+
+    imgEl.style.display = 'none';
+    if (loadingEl) loadingEl.style.display = 'block';
+    modal.classList.add('active');
+
+    let dataUrl = tx?.receiptImage || null;
+    if (!dataUrl) {
+      dataUrl = await ReceiptImageDB.getImage(txId);
+    }
+
+    if (loadingEl) loadingEl.style.display = 'none';
+    if (dataUrl) {
+      imgEl.src = dataUrl;
+      imgEl.style.display = 'inline-block';
+    } else {
+      if (captionEl) {
+        captionEl.textContent = 'レシート画像が見つかりませんでした（保存されていないか削除されました）';
+      }
+    }
+
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  showImageModal(dataUrl, title = '') {
+    const modal = document.getElementById('receipt-photo-modal');
+    const imgEl = document.getElementById('receipt-photo-img');
+    const captionEl = document.getElementById('receipt-photo-caption');
+    const loadingEl = document.getElementById('receipt-photo-loading');
+    if (!modal || !imgEl) return;
+
+    if (loadingEl) loadingEl.style.display = 'none';
+    if (captionEl) captionEl.textContent = title;
+    imgEl.src = dataUrl;
+    imgEl.style.display = 'inline-block';
+    modal.classList.add('active');
+    if (window.lucide) window.lucide.createIcons();
   }
 
   // ユーティリティ
