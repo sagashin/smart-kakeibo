@@ -101,6 +101,24 @@ export class AppUI {
       });
     });
 
+    // 記録・アイテム編集フォーム
+    const editTxForm = document.getElementById('edit-tx-form');
+    if (editTxForm) {
+      editTxForm.addEventListener('submit', (e) => this.handleEditTxSubmit(e));
+    }
+
+    // 記録編集内の品目追加
+    const editAddBtn = document.getElementById('edit-tx-add-item-btn');
+    if (editAddBtn) {
+      editAddBtn.addEventListener('click', () => this.addEditTxItemRow());
+    }
+
+    // 記録編集内の値引き変更時サマリー更新
+    const editDiscount = document.getElementById('edit-tx-discount');
+    if (editDiscount) {
+      editDiscount.addEventListener('input', () => this.updateEditTxSummary());
+    }
+
     // 設定フォームの保存
     const settingsForm = document.getElementById('settings-form');
     if (settingsForm) {
@@ -364,6 +382,7 @@ export class AppUI {
     const dateFormatted = tx.date.split('-').slice(1).join('/');
     const foodItems = (tx.items || []).filter(i => i.isFood);
     const hasDiscount = tx.totalDiscount > 0;
+    const items = tx.items || [];
 
     return `
       <div class="tx-card">
@@ -374,8 +393,11 @@ export class AppUI {
           </div>
           <div class="tx-header-right">
             <span class="tx-amount">¥${tx.totalAmount.toLocaleString()}</span>
+            <button class="btn-icon-subtle" onclick="event.stopPropagation(); window.appUI.openEditTxModal('${tx.id}')" title="この記録と品目を編集">
+              <i data-lucide="edit-2"></i>
+            </button>
             ${showDelete ? `
-              <button class="btn-icon-subtle" onclick="window.appUI.deleteTx('${tx.id}')">
+              <button class="btn-icon-subtle text-danger" onclick="event.stopPropagation(); window.appUI.deleteTx('${tx.id}')" title="この記録全体を削除">
                 <i data-lucide="trash-2"></i>
               </button>
             ` : ''}
@@ -399,23 +421,56 @@ export class AppUI {
           ` : ''}
         </div>
 
-        <div class="tx-items-preview">
-          ${(tx.items || []).slice(0, 3).map(i => `
-            <span class="tx-item-chip">
+        <div class="tx-items-preview" id="items-${tx.id}">
+          ${items.map((i, idx) => `
+            <span class="tx-item-chip ${idx >= 3 ? 'item-hidden' : ''}" style="${idx >= 3 ? 'display: none;' : ''}" onclick="event.stopPropagation(); window.appUI.openEditTxModal('${tx.id}')" title="タップして品目を編集">
               ${this.escapeHtml(i.name)}
               ${i.isFood && i.calories ? `<small>(${i.calories}c)</small>` : ''}
+              <span class="chip-delete-btn" onclick="event.stopPropagation(); window.appUI.deleteTxItem('${tx.id}', '${i.id}', '${this.escapeHtml(i.name)}')" title="この品目を削除">×</span>
             </span>
           `).join('')}
-          ${tx.items.length > 3 ? `<span class="tx-item-more">+他${tx.items.length - 3}品</span>` : ''}
+          ${items.length > 3 ? `
+            <span class="tx-item-more" id="more-btn-${tx.id}" onclick="window.appUI.toggleMoreItems('${tx.id}')">+他${items.length - 3}品を表示</span>
+          ` : ''}
         </div>
       </div>
     `;
+  }
+
+  toggleMoreItems(txId) {
+    const container = document.getElementById(`items-${txId}`);
+    const moreBtn = document.getElementById(`more-btn-${txId}`);
+    if (!container) return;
+
+    const hiddenItems = container.querySelectorAll('.item-hidden');
+    const isCurrentlyHidden = hiddenItems[0] && hiddenItems[0].style.display === 'none';
+
+    hiddenItems.forEach(el => {
+      el.style.display = isCurrentlyHidden ? 'inline-flex' : 'none';
+    });
+
+    if (moreBtn) {
+      moreBtn.textContent = isCurrentlyHidden ? '閉じる' : `+他${hiddenItems.length}品を表示`;
+    }
   }
 
   deleteTx(id) {
     if (confirm('この記録を削除しますか？')) {
       store.deleteTransaction(id);
       this.showToast('記録を削除しました');
+      this.renderHome();
+      this.renderHistory();
+      this.renderStats();
+    }
+  }
+
+  deleteTxItem(txId, itemId, itemName) {
+    if (confirm(`「${itemName}」を削除しますか？`)) {
+      store.deleteTransactionItem(txId, itemId);
+      this.showToast(`「${itemName}」を削除しました`);
+      this.renderHome();
+      this.renderHistory();
+      this.renderStats();
     }
   }
 
@@ -921,10 +976,160 @@ export class AppUI {
       .replace(/'/g, '&#39;');
   }
 
-  getOffsetDateStr(offsetDays) {
-    const d = new Date();
-    d.setDate(d.getDate() + offsetDays);
-    return d.toISOString().split('T')[0];
+  openEditTxModal(txId) {
+    const tx = store.transactions.find(t => t.id === txId);
+    if (!tx) return;
+
+    const modal = document.getElementById('edit-tx-modal');
+    if (!modal) return;
+
+    document.getElementById('edit-tx-id').value = tx.id;
+    document.getElementById('edit-tx-date').value = tx.date;
+    document.getElementById('edit-tx-store').value = tx.store;
+    document.getElementById('edit-tx-discount').value = tx.totalDiscount || 0;
+    document.getElementById('edit-tx-memo').value = tx.memo || '';
+
+    const container = document.getElementById('edit-tx-items-container');
+    container.innerHTML = '';
+
+    if (tx.items && tx.items.length > 0) {
+      tx.items.forEach(item => {
+        this.addEditTxItemRow(item.name, item.price, item.calories, item.category);
+      });
+    } else {
+      this.addEditTxItemRow('', tx.totalAmount, tx.totalCalories, tx.category);
+    }
+
+    this.updateEditTxSummary();
+    modal.classList.add('active');
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  addEditTxItemRow(name = '', price = '', calories = '', category = '主食') {
+    const container = document.getElementById('edit-tx-items-container');
+    if (!container) return;
+
+    const rowId = 'edit_row_' + Math.random().toString(36).substr(2, 6);
+    const div = document.createElement('div');
+    div.className = 'manual-item-row';
+    div.id = rowId;
+    div.innerHTML = `
+      <div class="row-inputs">
+        <input type="text" class="input-food-name" placeholder="食品名 (例: おにぎり, 牛乳)" value="${this.escapeHtml(name)}">
+        <input type="number" class="input-food-price" placeholder="¥ 金額" value="${price}">
+        <input type="number" class="input-food-cal" placeholder="kcal" value="${calories}">
+        <select class="input-food-cat">
+          <option value="主食" ${category === '主食' ? 'selected' : ''}>主食</option>
+          <option value="お肉・魚" ${category === 'お肉・魚' ? 'selected' : ''}>肉・魚</option>
+          <option value="野菜・果物" ${category === '野菜・果物' ? 'selected' : ''}>野菜・果物</option>
+          <option value="乳製品・飲料" ${category === '乳製品・飲料' ? 'selected' : ''}>飲料・乳</option>
+          <option value="惣菜・お弁当" ${category === '惣菜・お弁当' ? 'selected' : ''}>惣菜・弁当</option>
+          <option value="お菓子・スイーツ" ${category === 'お菓子・スイーツ' ? 'selected' : ''}>お菓子</option>
+          <option value="日用品" ${category === '日用品' ? 'selected' : ''}>日用品</option>
+          <option value="その他" ${category === 'その他' ? 'selected' : ''}>その他</option>
+        </select>
+        <button type="button" class="btn-icon-subtle text-danger" onclick="document.getElementById('${rowId}').remove(); window.appUI.updateEditTxSummary();" title="この品目を削除">
+          <i data-lucide="minus-circle"></i>
+        </button>
+      </div>
+    `;
+    container.appendChild(div);
+
+    const nameInput = div.querySelector('.input-food-name');
+    const priceInput = div.querySelector('.input-food-price');
+    const calInput = div.querySelector('.input-food-cal');
+    const catSelect = div.querySelector('.input-food-cat');
+
+    nameInput.addEventListener('blur', () => {
+      if (!calInput.value && nameInput.value) {
+        const est = estimateFoodCalories(nameInput.value);
+        if (est.isFood) {
+          calInput.value = est.calories;
+          catSelect.value = est.category;
+          this.updateEditTxSummary();
+        }
+      }
+    });
+
+    priceInput.addEventListener('input', () => this.updateEditTxSummary());
+    calInput.addEventListener('input', () => this.updateEditTxSummary());
+
+    if (window.lucide) window.lucide.createIcons();
+    this.updateEditTxSummary();
+  }
+
+  updateEditTxSummary() {
+    const container = document.getElementById('edit-tx-items-container');
+    if (!container) return;
+
+    const discount = Number(document.getElementById('edit-tx-discount')?.value) || 0;
+    let totalAmount = 0;
+    let totalCalories = 0;
+
+    container.querySelectorAll('.manual-item-row').forEach(row => {
+      const price = Number(row.querySelector('.input-food-price')?.value) || 0;
+      const cal = Number(row.querySelector('.input-food-cal')?.value) || 0;
+      totalAmount += price;
+      totalCalories += cal;
+    });
+
+    const finalAmount = Math.max(0, totalAmount - discount);
+    const priceEl = document.getElementById('edit-tx-summary-price');
+    const calEl = document.getElementById('edit-tx-summary-cal');
+
+    if (priceEl) priceEl.textContent = `合計: ¥${finalAmount.toLocaleString()}`;
+    if (calEl) calEl.innerHTML = `<i data-lucide="flame"></i> ${totalCalories.toLocaleString()} kcal`;
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  handleEditTxSubmit(e) {
+    e.preventDefault();
+    const txId = document.getElementById('edit-tx-id').value;
+    if (!txId) return;
+
+    const date = document.getElementById('edit-tx-date').value || new Date().toISOString().split('T')[0];
+    const storeName = document.getElementById('edit-tx-store').value.trim() || '店舗未登録';
+    const discount = Number(document.getElementById('edit-tx-discount').value) || 0;
+    const memo = document.getElementById('edit-tx-memo').value.trim();
+
+    const items = [];
+    document.querySelectorAll('#edit-tx-items-container .manual-item-row').forEach(row => {
+      const name = row.querySelector('.input-food-name').value.trim();
+      const price = Number(row.querySelector('.input-food-price').value) || 0;
+      const calories = Number(row.querySelector('.input-food-cal').value) || 0;
+      const category = row.querySelector('.input-food-cat').value;
+
+      if (name || price > 0) {
+        items.push({
+          name: name || '品目',
+          price,
+          calories,
+          category,
+          isFood: category !== '日用品' && category !== 'その他'
+        });
+      }
+    });
+
+    if (items.length === 0) {
+      alert('品目を少なくとも1件登録してください。');
+      return;
+    }
+
+    store.updateTransaction(txId, {
+      date,
+      store: storeName,
+      totalDiscount: discount,
+      memo,
+      items
+    });
+
+    const modal = document.getElementById('edit-tx-modal');
+    if (modal) modal.classList.remove('active');
+
+    this.showToast('記録と品目を更新しました✨');
+    this.renderHome();
+    this.renderHistory();
+    this.renderStats();
   }
 }
 

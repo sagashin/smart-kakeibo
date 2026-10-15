@@ -320,6 +320,64 @@ export class AppStore {
     ReceiptImageDB.deleteImage(id);
   }
 
+  deleteTransactionItem(txId, itemId) {
+    const tx = this.transactions.find(t => t.id === txId);
+    if (!tx) return;
+
+    tx.items = (tx.items || []).filter(i => i.id !== itemId);
+    if (tx.items.length === 0) {
+      this.deleteTransaction(txId);
+      return;
+    }
+
+    // 合計金額・合計カロリーを再計算
+    const itemsSum = tx.items.reduce((sum, i) => sum + (i.price * (i.quantity || 1)), 0);
+    tx.totalAmount = Math.max(0, itemsSum - (tx.totalDiscount || 0));
+    tx.totalCalories = tx.items.reduce((sum, i) => sum + ((i.calories || 0) * (i.quantity || 1)), 0);
+
+    this.saveTransactions();
+  }
+
+  updateTransaction(id, updatedData) {
+    const tx = this.transactions.find(t => t.id === id);
+    if (!tx) return null;
+
+    if (updatedData.store !== undefined) tx.store = updatedData.store;
+    if (updatedData.date !== undefined) tx.date = updatedData.date;
+    if (updatedData.memo !== undefined) tx.memo = updatedData.memo;
+    if (updatedData.totalDiscount !== undefined) tx.totalDiscount = Number(updatedData.totalDiscount) || 0;
+
+    if (updatedData.items) {
+      tx.items = updatedData.items.map(i => {
+        let isFood = i.isFood;
+        if (isFood === undefined) {
+          isFood = i.category !== '日用品' && i.category !== 'その他';
+        }
+        return {
+          id: i.id || ('item_' + Math.random().toString(36).substr(2, 7)),
+          name: i.name || '品目',
+          price: Number(i.price) || 0,
+          quantity: Number(i.quantity) || 1,
+          calories: Number(i.calories) || 0,
+          category: i.category || '主食',
+          isFood,
+          shelfLifeDays: i.shelfLifeDays || 3
+        };
+      });
+    }
+
+    // 合計金額・合計カロリーを再計算
+    const itemsSum = (tx.items || []).reduce((sum, i) => sum + (i.price * (i.quantity || 1)), 0);
+    tx.totalAmount = Math.max(0, itemsSum - (tx.totalDiscount || 0));
+    tx.totalCalories = (tx.items || []).reduce((sum, i) => sum + ((i.calories || 0) * (i.quantity || 1)), 0);
+    if (tx.items && tx.items[0]) {
+      tx.category = tx.items[0].category;
+    }
+
+    this.saveTransactions();
+    return tx;
+  }
+
   calculateExpiry(baseDateStr, days) {
     const d = new Date(baseDateStr);
     d.setDate(d.getDate() + (days || 3));

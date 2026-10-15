@@ -417,6 +417,14 @@ body.full-width-mode .bottom-nav {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.tx-item-chip:hover {
+  background: #EEF2F6;
+  border-color: #CBD5E1;
+  color: var(--color-primary);
 }
 
 .tx-item-chip small {

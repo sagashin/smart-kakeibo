@@ -566,6 +566,65 @@
   </div>
 
   <!-- ==========================================
+       モーダル: 記録 & アイテム編集フォーム
+       ========================================== -->
+  <div id="edit-tx-modal" class="modal-overlay">
+    <div class="modal-sheet" style="max-height: 90vh; max-height: 90dvh; display: flex; flex-direction: column;">
+      <div class="modal-header">
+        <div class="modal-title"><i data-lucide="edit-2" style="color: var(--color-primary); display: inline;"></i> 記録 &amp; 品目の編集</div>
+        <button type="button" class="btn-icon-subtle modal-close-btn">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+
+      <form id="edit-tx-form" class="modal-body" style="overflow-y: auto; flex: 1; padding: 16px;">
+        <input type="hidden" id="edit-tx-id">
+
+        <!-- 合計金額 & カロリー サマリーバッジ -->
+        <div class="draft-summary-bar" id="edit-tx-summary-badge" style="margin-bottom: 12px;">
+          <span class="badge-total-price" id="edit-tx-summary-price">合計: ¥0</span>
+          <span class="badge-total-cal" id="edit-tx-summary-cal"><i data-lucide="flame"></i> 0 kcal</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div class="form-group">
+            <label>購入日</label>
+            <input type="date" id="edit-tx-date" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label>店舗・場所</label>
+            <input type="text" id="edit-tx-store" class="form-control" placeholder="例: セブン、ライフ" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>値引き・割引(円)</label>
+          <input type="number" id="edit-tx-discount" class="form-control" value="0">
+        </div>
+
+        <div class="section-header" style="margin: 14px 0 8px 0; display: flex; justify-content: space-between; align-items: center;">
+          <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary); margin: 0;">品目・食材とカロリー</label>
+          <button type="button" id="edit-tx-add-item-btn" class="btn-subtle" style="font-size: 11px; padding: 4px 8px; border-radius: 4px;">
+            <i data-lucide="plus" style="width: 12px; height: 12px; display: inline;"></i> 品目を追加
+          </button>
+        </div>
+
+        <div id="edit-tx-items-container" class="draft-items-container"></div>
+
+        <div class="form-group" style="margin-top: 12px;">
+          <label>メモ</label>
+          <input type="text" id="edit-tx-memo" class="form-control" placeholder="例: ランチ、セールで安かった等">
+        </div>
+
+        <div class="modal-footer" style="padding: 14px 0 0 0; background: none;">
+          <button type="button" class="btn btn-secondary modal-close-btn" style="flex: 1;">キャンセル</button>
+          <button type="submit" class="btn btn-primary" style="flex: 2;">変更を保存する</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================
        スキャン演出オーバーレイ
        ========================================== -->
   <div id="scanning-overlay" class="scanning-overlay">
@@ -581,6 +640,6 @@
   <div id="toast-notification" class="toast">記録を保存しました！</div>
 
   <!-- Scripts: self-contained bundle for seamless local file & server execution -->
-  <script src="./js/bundle.js?v=20261015_05"></script>
+  <script src="./js/bundle.js?v=20261015_06"></script>
 </body>
 </html>
