@@ -1,54 +1,38 @@
 /**
- * Gemini API レシート画像解析 & デモスキャナーモジュール
- * Google Gemini 3.5 Flash / 3.8 Flash / 3.5 Flash-Lite / 2.5 Flash を活用して、
- * レシート写真から店舗名・品目・金額・割引・食品判定・カテゴリ・賞味期限を抽出
+ * Gemini API 高精度レシート画像解析 & デモスキャナーモジュール
+ * Google Gemini 3.5 Flash / 3.8 Flash / 3.5 Flash-Lite を活用して、
+ * 日本のレシート特有の記号除去・値引き反映・品目・金額・賞味期限を精密抽出
  */
 
 const SYSTEM_PROMPT = `
-あなたは日本のレシート読み取りの最高峰のAIアシスタントです。
-提供されたレシート画像から、次の情報を正確に抽出し、指定のJSON形式でのみ出力してください。余分なMarkdownのバッククォートや説明文は一切含めず、純粋なJSON文字列のみを返してください。
+あなたは日本のレシート読み取り・OCR解析に特化した最高精度のAIアシスタントです。
+提供されたレシート画像から、店舗名・購入日・各品目（商品名・価格・数量・食品判定・カテゴリ・消費目安日数）・値引き額・最終支払合計金額を極めて正確に抽出してください。
 
-抽出項目:
-1. store: 店舗名 (スーパー名、コンビニ名、ドラッグストア名、飲食店名など)
-2. date: レシートの発行日 (YYYY-MM-DD形式。不明な場合は今日の日付)
-3. totalAmount: 最終支払合計金額 (税込・割引適用後・数値)
-4. totalDiscount: 値引きやクーポン・ポイント値引きの合計額 (数値、なければ0)
-5. items: 品目ごとの配列
-   - name: 商品名 (レシート記載名を自然な日本語に補正)
-   - price: 金額 (税込数値)
-   - quantity: 数量 (通常は1)
-   - isFood: 食べ物または飲み物の場合は true、日用品等は false
+【厳格な読み取りルール】
+1. 商品名のクレンジング（記号・税区分の完全除去）:
+   - 軽減税率や税区分を表す記号（「*」「※」「軽」「外」「内」「#」「八」「8%」「10%」「T」など）は、商品名から完全に除去してください。
+   - レシート特有の略称や半角カナは、自然で読みやすい日本語に補正してください。
+     例:「CGCｷﾞｭｳﾆｭｳ」→「CGC 牛乳」、「ｺｸｻﾝﾄﾘﾓﾓ」→「国産鶏もも肉」、「ﾊﾟｽｺ ﾁｮｳｼﾞｭｸ」→「パスコ 超熟」
+2. 値引き・割引行の吸収:
+   - 商品の直下にある「値引」「▲50」「30%引」「半額」などの行は、独立した品目として計上しないでください。
+   - 対象商品の金額（price）から値引き分を差し引いた実支払額にするか、レシート全体の「値引き合計（totalDiscount）」に合算してください。
+3. 数量・単価・金額の対応:
+   - 「@158 × 2」のように単価と個数が並んでいる場合、quantityを2、priceをその品目の支払合計額（単価×数量）として正しく対応づけてください。単価を誤って商品名や総額に混同しないでください。
+4. 税抜と税込・合計金額（totalAmount）の整合性:
+   - レシート最下部に記載された、利用者が実際に支払った最終の「合計金額（税込・値引適用後）」を totalAmount に設定してください。
+   - 「小計」「お預り額」「お釣り」「外税対象額」「内消費税等」などを合計金額と誤認しないでください。
+   - 各品目の金額（price）は、可能な限り税込実支払額として算出してください。
+5. 除外すべき非商品行:
+   - 「ポイント利用」「ポイント付与」「チャージ額」「クレジット売上」「お預り」「釣銭」「登録番号」「店舗電話番号」などは購入品目に含めないでください（※レジ袋は日用品として含めて構いません）。
+6. 食品判定とカテゴリ・消費目安日数（shelfLifeDays）:
+   - isFood: 飲食料品なら true、日用品等は false
    - category: '主食' | 'お肉・魚' | '野菜・果物' | '乳製品・飲料' | '惣菜・お弁当' | 'お菓子・スイーツ' | '日用品' | 'その他'
-   - shelfLifeDays: 食品の場合の一般的な冷蔵・冷暗所での消費目安日数 (例: 刺身なら1, 牛乳なら6, 野菜なら5, 食パンなら4)
+   - shelfLifeDays: 食品の場合の一般的な冷蔵・冷暗所での消費目安日数（刺身: 1, 挽肉: 2, 豚/牛: 3, 葉物野菜: 4, 根菜: 14, 牛乳: 6, 卵: 14, 食パン: 4, 豆腐: 4, 納豆: 10, スナック/乾物: 90）。日用品は null。
 
-JSONフォーマット例:
-{
-  "store": "スーパーライフ",
-  "date": "2026-10-15",
-  "totalAmount": 1540,
-  "totalDiscount": 100,
-  "items": [
-    {
-      "name": "牛乳 1000ml",
-      "price": 240,
-      "quantity": 1,
-      "isFood": true,
-      "category": "乳製品・飲料",
-      "shelfLifeDays": 6
-    },
-    {
-      "name": "サランラップ 22cm",
-      "price": 198,
-      "quantity": 1,
-      "isFood": false,
-      "category": "日用品",
-      "shelfLifeDays": null
-    }
-  ]
-}
+純粋なJSON文字列のみを出力してください（説明文や余分なテキストは不要）。
 `;
 
-// 利用可能なGeminiモデル（優先順）
+// 利用可能なGeminiモデル（認識精度と速度順）
 export const CANDIDATE_MODELS = [
   'gemini-3.5-flash',
   'gemini-3.8-flash',
@@ -146,7 +130,7 @@ export async function testGeminiApiKey(rawApiKey) {
 }
 
 /**
- * レシート画像をGemini APIで解析
+ * レシート画像をGemini APIで高精度解析
  */
 export async function parseReceiptWithGemini(base64Image, mimeType = 'image/jpeg', rawApiKey = '') {
   const apiKey = sanitizeApiKey(rawApiKey);
@@ -163,6 +147,33 @@ export async function parseReceiptWithGemini(base64Image, mimeType = 'image/jpeg
     try {
       const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
 
+      // 高精度 Structured Output スキーマ
+      const responseSchema = {
+        type: 'OBJECT',
+        properties: {
+          store: { type: 'STRING', description: '店舗名' },
+          date: { type: 'STRING', description: '購入日 YYYY-MM-DD' },
+          totalAmount: { type: 'INTEGER', description: '最終支払合計金額（税込・割引後）' },
+          totalDiscount: { type: 'INTEGER', description: '値引き・割引の合計額（なければ0）' },
+          items: {
+            type: 'ARRAY',
+            items: {
+              type: 'OBJECT',
+              properties: {
+                name: { type: 'STRING', description: '商品名（記号除去・自然な日本語）' },
+                price: { type: 'INTEGER', description: '支払金額（税込数値）' },
+                quantity: { type: 'INTEGER', description: '数量' },
+                isFood: { type: 'BOOLEAN', description: '食品・飲料ならtrue、日用品等はfalse' },
+                category: { type: 'STRING', description: '主食/お肉・魚/野菜・果物/乳製品・飲料/惣菜・お弁当/お菓子・スイーツ/日用品/その他' },
+                shelfLifeDays: { type: 'INTEGER', description: '食品の消費目安日数' }
+              },
+              required: ['name', 'price', 'quantity', 'isFood', 'category']
+            }
+          }
+        },
+        required: ['store', 'date', 'totalAmount', 'items']
+      };
+
       const requestBody = {
         contents: [
           {
@@ -178,12 +189,13 @@ export async function parseReceiptWithGemini(base64Image, mimeType = 'image/jpeg
           }
         ],
         generationConfig: {
-          temperature: 0.1,
-          responseMimeType: 'application/json'
+          temperature: 0.0, // 決定論的・ブレを完全排除して精度最大化
+          responseMimeType: 'application/json',
+          responseSchema
         }
       };
 
-      const response = await fetch(endpoint, {
+      let response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -192,13 +204,26 @@ export async function parseReceiptWithGemini(base64Image, mimeType = 'image/jpeg
         body: JSON.stringify(requestBody)
       });
 
+      // スキーマ指定に未対応の古いモデル等のフォールバック
+      if (!response.ok && response.status === 400) {
+        console.warn('responseSchema request failed with 400, falling back to standard JSON generationConfig');
+        delete requestBody.generationConfig.responseSchema;
+        response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey
+          },
+          body: JSON.stringify(requestBody)
+        });
+      }
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         const status = response.status;
         const rawMsg = errorData.error?.message || response.statusText;
         const formatted = formatGeminiErrorMessage(status, rawMsg);
 
-        // 404の場合は次のモデルを試行
         if (status === 404) {
           console.warn(`Model ${modelName} returned 404, trying next...`);
           lastError = new Error(formatted);
@@ -219,7 +244,6 @@ export async function parseReceiptWithGemini(base64Image, mimeType = 'image/jpeg
     } catch (err) {
       console.warn(`Model ${modelName} failed, trying next...`, err);
       lastError = err;
-      // 400(キー無効)などの致命的エラーの場合は次を試さず中断
       if (err.message && (err.message.includes('APIキーが無効') || err.message.includes('400') || err.message.includes('403'))) {
         throw err;
       }
@@ -234,7 +258,6 @@ export async function parseReceiptWithGemini(base64Image, mimeType = 'image/jpeg
  */
 function cleanAndParseJson(rawText) {
   let cleaned = rawText.trim();
-  // Markdownコードブロック記法の除去
   if (cleaned.startsWith('```json')) {
     cleaned = cleaned.substring(7);
   } else if (cleaned.startsWith('```')) {
@@ -245,7 +268,7 @@ function cleanAndParseJson(rawText) {
   }
   cleaned = cleaned.trim();
 
-  // 前後にテキストが混入している場合、最初の '{' と最後の '}' を抽出
+  // 前後に余計な説明文がある場合、最初の '{' と最後の '}' を抽出
   const firstBrace = cleaned.indexOf('{');
   const lastBrace = cleaned.lastIndexOf('}');
   if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
@@ -301,7 +324,6 @@ function validateAndFormatReceiptData(data) {
 
 /**
  * デモスキャナー用サンプルレシートリスト
- * APIキーがなくてもリアルな認識結果を体験できるプリセット
  */
 export const DEMO_RECEIPTS = [
   {
@@ -347,7 +369,6 @@ export const DEMO_RECEIPTS = [
  * デモスキャンシミュレーション
  */
 export async function simulateReceiptScan(demoIndex = 0) {
-  // スキャン演出のため少し待機 (1.0秒)
   await new Promise(resolve => setTimeout(resolve, 1000));
   const preset = DEMO_RECEIPTS[demoIndex % DEMO_RECEIPTS.length];
   const items = preset.items.map(i => ({ ...i }));

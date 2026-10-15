@@ -668,21 +668,31 @@
      4. Gemini API レシート画像解析 & デモスキャナー
      ========================================================================== */
   const SYSTEM_PROMPT = `
-あなたは日本のレシート読み取りの最高峰のAIアシスタントです。
-提供されたレシート画像から、次の情報を正確に抽出し、指定のJSON形式でのみ出力してください。余分なMarkdownのバッククォートや説明文は一切含めず、純粋なJSON文字列のみを返してください。
+あなたは日本のレシート読み取り・OCR解析に特化した最高精度のAIアシスタントです。
+提供されたレシート画像から、店舗名・購入日・各品目（商品名・価格・数量・食品判定・カテゴリ・消費目安日数）・値引き額・最終支払合計金額を極めて正確に抽出してください。
 
-抽出項目:
-1. store: 店舗名 (スーパー名、コンビニ名、ドラッグストア名、飲食店名など)
-2. date: レシートの発行日 (YYYY-MM-DD形式。不明な場合は今日の日付)
-3. totalAmount: 最終支払合計金額 (税込・割引適用後・数値)
-4. totalDiscount: 値引きやクーポン・ポイント値引きの合計額 (数値、なければ0)
-5. items: 品目ごとの配列
-   - name: 商品名 (レシート記載名を自然な日本語に補正)
-   - price: 金額 (税込数値)
-   - quantity: 数量 (通常は1)
-   - isFood: 食べ物または飲み物の場合は true、日用品等は false
+【厳格な読み取りルール】
+1. 商品名のクレンジング（記号・税区分の完全除去）:
+   - 軽減税率や税区分を表す記号（「*」「※」「軽」「外」「内」「#」「八」「8%」「10%」「T」など）は、商品名から完全に除去してください。
+   - レシート特有の略称や半角カナは、自然で読みやすい日本語に補正してください。
+     例:「CGCｷﾞｳﾆｭｳ」→「CGC 牛乳」、「ｺｸｻﾝﾄﾘﾓﾓ」→「国産鶏もも肉」、「ﾊﾟｽｺ ﾁｮｳｼﾞｭｸ」→「パスコ 超熟」
+2. 値引き・割引行の吸収:
+   - 商品の直下にある「値引」「▲50」「30%引」「半額」などの行は、独立した品目として計上しないでください。
+   - 対象商品の金額（price）から値引き分を差し引いた実支払額にするか、レシート全体の「値引き合計（totalDiscount）」に合算してください。
+3. 数量・単価・金額の対応:
+   - 「@158 × 2」のように単価と個数が並んでいる場合、quantityを2、priceをその品目の支払合計額（単価×数量）として正しく対応づけてください。単価を誤って商品名や総額に混同しないでください。
+4. 税抜と税込・合計金額（totalAmount）の整合性:
+   - レシート最下部に記載された、利用者が実際に支払った最終の「合計金額（税込・値引適用後）」を totalAmount に設定してください。
+   - 「小計」「お預り額」「お釣り」「外税対象額」「内消費税等」などを合計金額と誤認しないでください。
+   - 各品目の金額（price）は、可能な限り税込実支払額として算出してください。
+5. 除外すべき非商品行:
+   - 「ポイント利用」「ポイント付与」「チャージ額」「クレジット売上」「お預り」「釣銭」「登録番号」「店舗電話番号」などは購入品目に含めないでください（※レジ袋は日用品として含めて構いません）。
+6. 食品判定とカテゴリ・消費目安日数（shelfLifeDays）:
+   - isFood: 飲食料品なら true、日用品等は false
    - category: '主食' | 'お肉・魚' | '野菜・果物' | '乳製品・飲料' | '惣菜・お弁当' | 'お菓子・スイーツ' | '日用品' | 'その他'
-   - shelfLifeDays: 食品の場合の一般的な冷蔵・冷暗所での消費目安日数 (例: 刺身なら1, 牛乳なら6, 野菜なら5, 食パンなら4)
+   - shelfLifeDays: 食品の場合の一般的な冷蔵・冷暗所での消費目安日数（刺身: 1, 挽肉: 2, 豚/牛: 3, 葉物野菜: 4, 根菜: 14, 牛乳: 6, 卵: 14, 食パン: 4, 豆腐: 4, 納豆: 10, スナック/乾物: 90）。日用品は null。
+
+純粋なJSON文字列のみを出力してください（説明文や余分なテキストは不要）。
 `;
 
   // 利用可能なGeminiモデル（優先順）
@@ -785,12 +795,55 @@
     for (const modelName of CANDIDATE_MODELS) {
       try {
         const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
-        const requestBody = {
-          contents: [{ parts: [{ text: SYSTEM_PROMPT }, { inline_data: { mime_type: mimeType, data: cleanBase64 } }] }],
-          generationConfig: { temperature: 0.1, responseMimeType: 'application/json' }
+
+        const responseSchema = {
+          type: 'OBJECT',
+          properties: {
+            store: { type: 'STRING', description: '店舗名' },
+            date: { type: 'STRING', description: '購入日 YYYY-MM-DD' },
+            totalAmount: { type: 'INTEGER', description: '最終支払合計金額（税込・割引後）' },
+            totalDiscount: { type: 'INTEGER', description: '値引き・割引の合計額（なければ0）' },
+            items: {
+              type: 'ARRAY',
+              items: {
+                type: 'OBJECT',
+                properties: {
+                  name: { type: 'STRING', description: '商品名（記号除去・自然な日本語）' },
+                  price: { type: 'INTEGER', description: '支払金額（税込数値）' },
+                  quantity: { type: 'INTEGER', description: '数量' },
+                  isFood: { type: 'BOOLEAN', description: '食品・飲料ならtrue、日用品等はfalse' },
+                  category: { type: 'STRING', description: '主食/お肉・魚/野菜・果物/乳製品・飲料/惣菜・お弁当/お菓子・スイーツ/日用品/その他' },
+                  shelfLifeDays: { type: 'INTEGER', description: '食品の消費目安日数' }
+                },
+                required: ['name', 'price', 'quantity', 'isFood', 'category']
+              }
+            }
+          },
+          required: ['store', 'date', 'totalAmount', 'items']
         };
 
-        const response = await fetch(endpoint, {
+        const requestBody = {
+          contents: [
+            {
+              parts: [
+                { text: SYSTEM_PROMPT },
+                {
+                  inline_data: {
+                    mime_type: mimeType,
+                    data: cleanBase64
+                  }
+                }
+              ]
+            }
+          ],
+          generationConfig: {
+            temperature: 0.0,
+            responseMimeType: 'application/json',
+            responseSchema
+          }
+        };
+
+        let response = await fetch(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -798,6 +851,19 @@
           },
           body: JSON.stringify(requestBody)
         });
+
+        if (!response.ok && response.status === 400) {
+          console.warn('responseSchema request failed with 400, falling back to standard JSON generationConfig');
+          delete requestBody.generationConfig.responseSchema;
+          response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': apiKey
+            },
+            body: JSON.stringify(requestBody)
+          });
+        }
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
@@ -1620,7 +1686,8 @@
       this.showScanningOverlay();
 
       try {
-        const base64 = await this.compressImage(file, 1200, 0.8) || await this.fileToBase64(file);
+        // 高解像度（最大2400px・高品質0.92・コントラスト補正）でレシートの極小文字を鮮明化
+        const base64 = await this.compressImage(file, 2400, 0.92) || await this.fileToBase64(file);
         const apiKey = sanitizeApiKey(store.settings.geminiApiKey);
 
         let parsedData = null;
@@ -2175,31 +2242,56 @@
       }, duration);
     }
 
-    compressImage(file, maxDimension = 1200, quality = 0.8) {
+    compressImage(file, maxDimension = 2400, quality = 0.92) {
       return new Promise((resolve) => {
+        if (!file || !file.type.startsWith('image/')) {
+          resolve(null);
+          return;
+        }
         const reader = new FileReader();
         reader.onload = (e) => {
           const img = new Image();
           img.onload = () => {
-            let width = img.width;
-            let height = img.height;
+            try {
+              let width = img.width;
+              let height = img.height;
 
-            if (width > maxDimension || height > maxDimension) {
-              if (width > height) {
-                height = Math.round((height * maxDimension) / width);
-                width = maxDimension;
-              } else {
-                width = Math.round((width * maxDimension) / height);
-                height = maxDimension;
+              // レシートの極小文字潰れ防止:
+              // 長辺が maxDimension を超える場合のみ縮小
+              if (width > maxDimension || height > maxDimension) {
+                if (width > height) {
+                  height = Math.round((height * maxDimension) / width);
+                  width = maxDimension;
+                } else {
+                  width = Math.round((width * maxDimension) / height);
+                  height = maxDimension;
+                }
               }
-            }
 
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, width, height);
-            resolve(canvas.toDataURL('image/jpeg', quality));
+              // 縦長レシートで横幅が縮みすぎて文字が潰れるのを防ぐ（幅最低900pxを確保）
+              const minShortSide = 900;
+              if (width < height && width < minShortSide && img.width >= minShortSide) {
+                const scale = minShortSide / width;
+                width = minShortSide;
+                height = Math.round(height * scale);
+              }
+
+              const canvas = document.createElement('canvas');
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext('2d');
+
+              // 感熱紙の薄い文字や背景の影をくっきり浮き立たせるコントラスト最適化
+              if (ctx.filter !== undefined) {
+                ctx.filter = 'contrast(1.08) brightness(1.02)';
+              }
+
+              ctx.drawImage(img, 0, 0, width, height);
+              resolve(canvas.toDataURL('image/jpeg', quality));
+            } catch (err) {
+              console.warn('Image compression fallback:', err);
+              resolve(e.target.result);
+            }
           };
           img.onerror = () => resolve(null);
           img.src = e.target.result;

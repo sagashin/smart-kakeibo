@@ -586,8 +586,8 @@ export class AppUI {
     this.showScanningOverlay();
 
     try {
-      // スマホカメラの高画質写真をCanvasで軽量化圧縮（約70〜100KB）
-      const base64 = await this.compressImage(file, 1200, 0.8) || await this.fileToBase64(file);
+      // 高解像度（最大2400px・高品質0.92・コントラスト補正）でレシートの極小文字を鮮明化
+      const base64 = await this.compressImage(file, 2400, 0.92) || await this.fileToBase64(file);
       const apiKey = sanitizeApiKey(store.settings.geminiApiKey);
 
       let result;
@@ -922,7 +922,7 @@ export class AppUI {
     }, duration);
   }
 
-  compressImage(file, maxWidth = 1200, quality = 0.8) {
+  compressImage(file, maxDimension = 2400, quality = 0.92) {
     return new Promise((resolve) => {
       if (!file || !file.type.startsWith('image/')) {
         resolve(null);
@@ -935,19 +935,37 @@ export class AppUI {
           try {
             let width = img.width;
             let height = img.height;
-            if (width > maxWidth || height > maxWidth) {
+
+            // レシートの極小文字潰れ防止:
+            // 長辺が maxDimension を超える場合のみ縮小
+            if (width > maxDimension || height > maxDimension) {
               if (width > height) {
-                height = Math.round((height * maxWidth) / width);
-                width = maxWidth;
+                height = Math.round((height * maxDimension) / width);
+                width = maxDimension;
               } else {
-                width = Math.round((width * maxWidth) / height);
-                height = maxWidth;
+                width = Math.round((width * maxDimension) / height);
+                height = maxDimension;
               }
             }
+
+            // 縦長レシートで横幅が縮みすぎて文字が潰れるのを防ぐ（幅最低900pxを確保）
+            const minShortSide = 900;
+            if (width < height && width < minShortSide && img.width >= minShortSide) {
+              const scale = minShortSide / width;
+              width = minShortSide;
+              height = Math.round(height * scale);
+            }
+
             const canvas = document.createElement('canvas');
             canvas.width = width;
             canvas.height = height;
             const ctx = canvas.getContext('2d');
+
+            // 感熱紙の薄い文字や背景の影をくっきり浮き立たせるコントラスト最適化
+            if (ctx.filter !== undefined) {
+              ctx.filter = 'contrast(1.08) brightness(1.02)';
+            }
+
             ctx.drawImage(img, 0, 0, width, height);
             const compressed = canvas.toDataURL('image/jpeg', quality);
             resolve(compressed);
