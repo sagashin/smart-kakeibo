@@ -501,9 +501,10 @@
   gap: 4px;
 }
 
-/* --- 手入力フォーム --- */
+/* --- 手入力 & 記録編集フォーム --- */
 .form-group {
   margin-bottom: 12px;
+  min-width: 0;
 }
 
 .form-group label {
@@ -516,6 +517,8 @@
 
 .form-control {
   width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
   padding: 10px 12px;
   border: 1px solid var(--border-light);
   border-radius: var(--radius-sm);
@@ -527,38 +530,118 @@
   background: #F8FAFC;
   border: 1px solid var(--border-light);
   border-radius: var(--radius-md);
-  padding: 8px 10px;
+  padding: 10px;
   margin-bottom: 8px;
+  box-sizing: border-box;
+  width: 100%;
 }
 
-.row-inputs {
+.manual-row-top {
   display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.manual-row-top .input-food-name {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: #FFFFFF;
+  box-sizing: border-box;
+}
+
+.manual-row-bottom {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.15fr;
+  gap: 6px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.manual-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.manual-field-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.manual-field .input-food-price,
+.manual-field .input-food-cal,
+.manual-field .input-food-cat {
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 7px 8px;
+  font-size: 12px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: #FFFFFF;
+}
+
+/* 従来の .row-inputs に対するフォールバック（画面幅からはみ出さないグリッド自動配置） */
+.row-inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.15fr auto;
   gap: 6px;
   align-items: center;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-.input-food-name {
-  flex: 2;
-  padding: 6px 8px;
+.row-inputs .input-food-name {
+  grid-column: 1 / 4;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.row-inputs .btn-icon-subtle {
+  grid-column: 4 / 5;
+  justify-self: center;
+}
+
+.row-inputs .input-food-price {
+  grid-column: 1 / 2;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 6px;
   font-size: 12px;
-  border: 1px solid var(--border-light);
-  border-radius: 4px;
 }
 
-.input-food-price, .input-food-cal {
-  flex: 1;
-  padding: 6px 6px;
+.row-inputs .input-food-cal {
+  grid-column: 2 / 3;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 6px;
   font-size: 12px;
-  border: 1px solid var(--border-light);
-  border-radius: 4px;
-  min-width: 50px;
 }
 
-.input-food-cat {
-  padding: 6px 4px;
+.row-inputs .input-food-cat {
+  grid-column: 3 / 5;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 4px;
   font-size: 11px;
-  border: 1px solid var(--border-light);
-  border-radius: 4px;
 }
 
 .calorie-suggestion {
@@ -566,11 +649,13 @@
   font-size: 11px;
   color: #B45309;
   background: #FEF3C7;
-  padding: 4px 8px;
+  padding: 6px 10px;
   border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .btn-apply-sugg {
@@ -579,7 +664,7 @@
   border: none;
   font-size: 10px;
   font-weight: 700;
-  padding: 2px 6px;
+  padding: 2px 8px;
   border-radius: 4px;
   cursor: pointer;
 }

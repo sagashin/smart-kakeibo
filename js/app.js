@@ -1887,23 +1887,34 @@
       div.className = 'manual-item-row';
       div.id = rowId;
       div.innerHTML = `
-        <div class="row-inputs">
+        <div class="manual-row-top">
           <input type="text" class="input-food-name" placeholder="食品名 (例: おにぎり, 牛乳)" value="${this.escapeHtml(name)}">
-          <input type="number" class="input-food-price" placeholder="¥ 金額" value="${price}">
-          <input type="number" class="input-food-cal" placeholder="kcal" value="${calories}">
-          <select class="input-food-cat">
-            <option value="主食" ${category === '主食' ? 'selected' : ''}>主食</option>
-            <option value="お肉・魚" ${category === 'お肉・魚' ? 'selected' : ''}>肉・魚</option>
-            <option value="野菜・果物" ${category === '野菜・果物' ? 'selected' : ''}>野菜・果物</option>
-            <option value="乳製品・飲料" ${category === '乳製品・飲料' ? 'selected' : ''}>飲料・乳</option>
-            <option value="惣菜・お弁当" ${category === '惣菜・お弁当' ? 'selected' : ''}>惣菜・弁当</option>
-            <option value="お菓子・スイーツ" ${category === 'お菓子・スイーツ' ? 'selected' : ''}>お菓子</option>
-            <option value="日用品" ${category === '日用品' ? 'selected' : ''}>日用品</option>
-            <option value="その他" ${category === 'その他' ? 'selected' : ''}>その他</option>
-          </select>
-          <button type="button" class="btn-icon-subtle text-danger" onclick="document.getElementById('${rowId}').remove()">
+          <button type="button" class="btn-icon-subtle text-danger" onclick="document.getElementById('${rowId}').remove()" title="この品目を削除">
             <i data-lucide="minus-circle"></i>
           </button>
+        </div>
+        <div class="manual-row-bottom">
+          <div class="manual-field">
+            <span class="manual-field-label">金額(円)</span>
+            <input type="number" class="input-food-price" placeholder="¥ 0" value="${price}">
+          </div>
+          <div class="manual-field">
+            <span class="manual-field-label">カロリー</span>
+            <input type="number" class="input-food-cal" placeholder="kcal" value="${calories}">
+          </div>
+          <div class="manual-field">
+            <span class="manual-field-label">種別</span>
+            <select class="input-food-cat">
+              <option value="主食" ${category === '主食' ? 'selected' : ''}>主食</option>
+              <option value="お肉・魚" ${category === 'お肉・魚' ? 'selected' : ''}>肉・魚</option>
+              <option value="野菜・果物" ${category === '野菜・果物' ? 'selected' : ''}>野菜・果物</option>
+              <option value="乳製品・飲料" ${category === '乳製品・飲料' ? 'selected' : ''}>飲料・乳</option>
+              <option value="惣菜・お弁当" ${category === '惣菜・お弁当' ? 'selected' : ''}>惣菜・弁当</option>
+              <option value="お菓子・スイーツ" ${category === 'お菓子・スイーツ' ? 'selected' : ''}>お菓子</option>
+              <option value="日用品" ${category === '日用品' ? 'selected' : ''}>日用品</option>
+              <option value="その他" ${category === 'その他' ? 'selected' : ''}>その他</option>
+            </select>
+          </div>
         </div>
         <div class="calorie-suggestion" style="display: none;"></div>
       `;
@@ -2143,23 +2154,34 @@
       div.className = 'manual-item-row';
       div.id = rowId;
       div.innerHTML = `
-        <div class="row-inputs">
+        <div class="manual-row-top">
           <input type="text" class="input-food-name" placeholder="食品名 (例: おにぎり, 牛乳)" value="${this.escapeHtml(name)}">
-          <input type="number" class="input-food-price" placeholder="¥ 金額" value="${price}">
-          <input type="number" class="input-food-cal" placeholder="kcal" value="${calories}">
-          <select class="input-food-cat">
-            <option value="主食" ${category === '主食' ? 'selected' : ''}>主食</option>
-            <option value="お肉・魚" ${category === 'お肉・魚' ? 'selected' : ''}>肉・魚</option>
-            <option value="野菜・果物" ${category === '野菜・果物' ? 'selected' : ''}>野菜・果物</option>
-            <option value="乳製品・飲料" ${category === '乳製品・飲料' ? 'selected' : ''}>飲料・乳</option>
-            <option value="惣菜・お弁当" ${category === '惣菜・お弁当' ? 'selected' : ''}>惣菜・弁当</option>
-            <option value="お菓子・スイーツ" ${category === 'お菓子・スイーツ' ? 'selected' : ''}>お菓子</option>
-            <option value="日用品" ${category === '日用品' ? 'selected' : ''}>日用品</option>
-            <option value="その他" ${category === 'その他' ? 'selected' : ''}>その他</option>
-          </select>
           <button type="button" class="btn-icon-subtle text-danger" onclick="document.getElementById('${rowId}').remove(); window.appUI.updateEditTxSummary();" title="この品目を削除">
             <i data-lucide="minus-circle"></i>
           </button>
+        </div>
+        <div class="manual-row-bottom">
+          <div class="manual-field">
+            <span class="manual-field-label">金額(円)</span>
+            <input type="number" class="input-food-price" placeholder="¥ 0" value="${price}">
+          </div>
+          <div class="manual-field">
+            <span class="manual-field-label">カロリー</span>
+            <input type="number" class="input-food-cal" placeholder="kcal" value="${calories}">
+          </div>
+          <div class="manual-field">
+            <span class="manual-field-label">種別</span>
+            <select class="input-food-cat">
+              <option value="主食" ${category === '主食' ? 'selected' : ''}>主食</option>
+              <option value="お肉・魚" ${category === 'お肉・魚' ? 'selected' : ''}>肉・魚</option>
+              <option value="野菜・果物" ${category === '野菜・果物' ? 'selected' : ''}>野菜・果物</option>
+              <option value="乳製品・飲料" ${category === '乳製品・飲料' ? 'selected' : ''}>飲料・乳</option>
+              <option value="惣菜・お弁当" ${category === '惣菜・お弁当' ? 'selected' : ''}>惣菜・弁当</option>
+              <option value="お菓子・スイーツ" ${category === 'お菓子・スイーツ' ? 'selected' : ''}>お菓子</option>
+              <option value="日用品" ${category === '日用品' ? 'selected' : ''}>日用品</option>
+              <option value="その他" ${category === 'その他' ? 'selected' : ''}>その他</option>
+            </select>
+          </div>
         </div>
       `;
       container.appendChild(div);

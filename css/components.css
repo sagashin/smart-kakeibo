@@ -549,7 +549,25 @@ body.full-width-mode .bottom-nav {
 .modal-body {
   padding: 16px 20px;
   overflow-y: auto;
+  overflow-x: hidden;
   flex: 1;
+  box-sizing: border-box;
+}
+
+@media (max-width: 480px) {
+  .modal-sheet {
+    max-height: 92vh;
+    max-height: 92dvh;
+  }
+  .modal-header {
+    padding: 14px 16px;
+  }
+  .modal-body {
+    padding: 14px 14px;
+  }
+  .modal-footer {
+    padding: 12px 14px;
+  }
 }
 
 .modal-footer {
@@ -558,6 +576,7 @@ body.full-width-mode .bottom-nav {
   display: flex;
   gap: 10px;
   background: #F8FAFC;
+  box-sizing: border-box;
 }
 
 /* --- スキャン中演出オーバーレイ --- */
