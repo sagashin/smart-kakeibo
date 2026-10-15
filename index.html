@@ -285,6 +285,18 @@
           </p>
         </header>
 
+        <div class="fridge-toolbar">
+          <span style="font-size: 11px; color: var(--text-muted); font-weight: 600;">食品ストック</span>
+          <div style="display: flex; gap: 6px;">
+            <button type="button" class="btn-danger-outline" onclick="window.appUI && window.appUI.clearFridgeConsumed()" title="消費済みの品目を削除">
+              <i data-lucide="check-check" style="width: 12px; height: 12px;"></i> 消費済を削除
+            </button>
+            <button type="button" class="btn-icon-subtle text-danger" onclick="window.appUI && window.appUI.clearAllFridge()" title="冷蔵庫を空にする">
+              <i data-lucide="trash-2"></i>
+            </button>
+          </div>
+        </div>
+
         <div id="fridge-items-list"></div>
       </section>
 
@@ -338,11 +350,16 @@
         <div class="card">
           <h4 style="font-size: 13px; font-weight: 700; margin-bottom: 8px;">データ管理</h4>
           <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
-            すべてのデータはスマートフォン内のLocalStorageにのみ保存され、外部に送信されません。
+            自分専用の家計簿として0から始める場合は「全データを初期化」を押してください。
           </p>
-          <button id="reset-data-btn" type="button" class="btn btn-subtle" style="width: 100%; color: var(--color-danger);">
-            <i data-lucide="refresh-cw"></i> 初期デモデータに戻す
-          </button>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <button id="clear-all-data-btn" type="button" class="btn btn-danger-outline" style="width: 100%; justify-content: center; padding: 10px;" onclick="window.appUI && window.appUI.clearAllData()">
+              <i data-lucide="trash-2"></i> すべてのデータを消去（完全初期化・0件にする）
+            </button>
+            <button id="load-demo-data-btn" type="button" class="btn btn-subtle" style="width: 100%; justify-content: center;" onclick="window.appUI && window.appUI.loadDemoData()">
+              <i data-lucide="sparkles"></i> デモデータを再読み込みする
+            </button>
+          </div>
         </div>
       </section>
 

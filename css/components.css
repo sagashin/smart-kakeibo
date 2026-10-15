@@ -378,9 +378,12 @@
   font-size: 11px;
   background: #F8FAFC;
   border: 1px solid var(--border-light);
-  padding: 2px 7px;
+  padding: 3px 8px;
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .tx-item-chip small {
@@ -389,10 +392,60 @@
   margin-left: 2px;
 }
 
+.chip-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #E2E8F0;
+  color: #64748B;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-left: 2px;
+  transition: all var(--transition-fast);
+}
+
+.chip-delete-btn:hover {
+  background: var(--color-danger);
+  color: #FFFFFF;
+}
+
 .tx-item-more {
   font-size: 11px;
-  color: var(--text-muted);
-  padding: 2px 4px;
+  color: var(--color-primary);
+  padding: 2px 6px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.fridge-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  gap: 6px;
+}
+
+.btn-danger-outline {
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  color: #DC2626;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all var(--transition-fast);
+}
+
+.btn-danger-outline:hover {
+  background: #FEE2E2;
 }
 
 /* --- モーダル & ボトムシート --- */

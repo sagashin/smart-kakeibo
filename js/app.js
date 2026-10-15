@@ -153,7 +153,8 @@
   const STORAGE_KEYS = {
     TRANSACTIONS: 'smart_kakeibo_transactions_v1',
     FRIDGE_STOCK: 'smart_kakeibo_fridge_v1',
-    SETTINGS: 'smart_kakeibo_settings_v1'
+    SETTINGS: 'smart_kakeibo_settings_v1',
+    INITIALIZED: 'smart_kakeibo_initialized_v1'
   };
 
   const DEFAULT_SETTINGS = {
@@ -179,26 +180,52 @@
           this.settings = { ...DEFAULT_SETTINGS, ...JSON.parse(storedSettings) };
         }
 
+        const isInit = localStorage.getItem(STORAGE_KEYS.INITIALIZED);
         const storedTx = localStorage.getItem(STORAGE_KEYS.TRANSACTIONS);
-        if (storedTx) {
+        const storedFridge = localStorage.getItem(STORAGE_KEYS.FRIDGE_STOCK);
+
+        if (storedTx !== null) {
           this.transactions = JSON.parse(storedTx);
-        } else {
+        } else if (!isInit) {
+          // 初回アクセス時のみデモデータを生成
           this.transactions = this.generateInitialDemoData();
           this.saveTransactions();
+          localStorage.setItem(STORAGE_KEYS.INITIALIZED, 'true');
+        } else {
+          this.transactions = [];
         }
 
-        const storedFridge = localStorage.getItem(STORAGE_KEYS.FRIDGE_STOCK);
-        if (storedFridge) {
+        if (storedFridge !== null) {
           this.fridgeItems = JSON.parse(storedFridge);
-        } else {
+        } else if (!isInit) {
           this.fridgeItems = this.generateInitialFridgeData();
           this.saveFridge();
+        } else {
+          this.fridgeItems = [];
         }
       } catch (err) {
         console.error('Failed to load from storage:', err);
         this.transactions = [];
         this.fridgeItems = [];
       }
+    }
+
+    clearAllData() {
+      this.transactions = [];
+      this.fridgeItems = [];
+      localStorage.setItem(STORAGE_KEYS.INITIALIZED, 'true');
+      this.saveTransactions();
+      this.saveFridge();
+      this.notify();
+    }
+
+    loadDemoData() {
+      this.transactions = this.generateInitialDemoData();
+      this.fridgeItems = this.generateInitialFridgeData();
+      localStorage.setItem(STORAGE_KEYS.INITIALIZED, 'true');
+      this.saveTransactions();
+      this.saveFridge();
+      this.notify();
     }
 
     saveTransactions() {
@@ -315,6 +342,24 @@
       this.saveTransactions();
     }
 
+    deleteTransactionItem(txId, itemId) {
+      const tx = this.transactions.find(t => t.id === txId);
+      if (!tx) return;
+
+      tx.items = (tx.items || []).filter(i => i.id !== itemId);
+      if (tx.items.length === 0) {
+        this.deleteTransaction(txId);
+        return;
+      }
+
+      // 合計金額・合計カロリーを再計算
+      const itemsSum = tx.items.reduce((sum, i) => sum + (i.price * (i.quantity || 1)), 0);
+      tx.totalAmount = Math.max(0, itemsSum - (tx.totalDiscount || 0));
+      tx.totalCalories = tx.items.reduce((sum, i) => sum + ((i.calories || 0) * (i.quantity || 1)), 0);
+
+      this.saveTransactions();
+    }
+
     calculateExpiry(baseDateStr, days) {
       const d = new Date(baseDateStr);
       d.setDate(d.getDate() + (days || 3));
@@ -347,6 +392,16 @@
 
     deleteFridgeItem(id) {
       this.fridgeItems = this.fridgeItems.filter(f => f.id !== id);
+      this.saveFridge();
+    }
+
+    clearFridgeConsumed() {
+      this.fridgeItems = this.fridgeItems.filter(f => !f.isConsumed);
+      this.saveFridge();
+    }
+
+    clearAllFridge() {
+      this.fridgeItems = [];
       this.saveFridge();
     }
 
@@ -1075,7 +1130,7 @@
         if (recent.length === 0) {
           recentList.innerHTML = `<div class="empty-state">まだ記録がありません。「レシート撮影」または「手入力」から追加してみましょう！</div>`;
         } else {
-          recentList.innerHTML = recent.map(tx => this.createTransactionCardHtml(tx)).join('');
+          recentList.innerHTML = recent.map(tx => this.createTransactionCardHtml(tx, true)).join('');
         }
       }
 
@@ -1206,12 +1261,13 @@
       listEl.innerHTML = store.transactions.map(tx => this.createTransactionCardHtml(tx, true)).join('');
     }
 
-    createTransactionCardHtml(tx, showDelete = false) {
+    createTransactionCardHtml(tx, showDelete = true) {
       const dateFormatted = tx.date.split('-').slice(1).join('/');
       const hasDiscount = tx.totalDiscount > 0;
+      const items = tx.items || [];
 
       return `
-        <div class="tx-card">
+        <div class="tx-card" id="card-${tx.id}">
           <div class="tx-card-header">
             <div class="tx-header-left">
               <span class="tx-date">${dateFormatted}</span>
@@ -1220,7 +1276,7 @@
             <div class="tx-header-right">
               <span class="tx-amount">¥${tx.totalAmount.toLocaleString()}</span>
               ${showDelete ? `
-                <button class="btn-icon-subtle" onclick="window.appUI.deleteTx('${tx.id}')">
+                <button class="btn-icon-subtle text-danger" onclick="window.appUI.deleteTx('${tx.id}')" title="この記録全体を削除">
                   <i data-lucide="trash-2"></i>
                 </button>
               ` : ''}
@@ -1239,23 +1295,88 @@
             ` : ''}
           </div>
 
-          <div class="tx-items-preview">
-            ${(tx.items || []).slice(0, 3).map(i => `
-              <span class="tx-item-chip">
+          <div class="tx-items-preview" id="items-${tx.id}">
+            ${items.map((i, idx) => `
+              <span class="tx-item-chip ${idx >= 3 ? 'item-hidden' : ''}" style="${idx >= 3 ? 'display: none;' : ''}">
                 ${this.escapeHtml(i.name)}
                 ${i.isFood && i.calories ? `<small>(${i.calories}c)</small>` : ''}
+                <span class="chip-delete-btn" onclick="event.stopPropagation(); window.appUI.deleteTxItem('${tx.id}', '${i.id}', '${this.escapeHtml(i.name)}')" title="この品目を削除">×</span>
               </span>
             `).join('')}
-            ${tx.items.length > 3 ? `<span class="tx-item-more">+他${tx.items.length - 3}品</span>` : ''}
+            ${items.length > 3 ? `
+              <span class="tx-item-more" id="more-btn-${tx.id}" onclick="window.appUI.toggleMoreItems('${tx.id}')">+他${items.length - 3}品を表示</span>
+            ` : ''}
           </div>
         </div>
       `;
     }
 
+    toggleMoreItems(txId) {
+      const container = document.getElementById(`items-${txId}`);
+      const moreBtn = document.getElementById(`more-btn-${txId}`);
+      if (!container) return;
+
+      const hiddenItems = container.querySelectorAll('.item-hidden');
+      const isCurrentlyHidden = hiddenItems[0] && hiddenItems[0].style.display === 'none';
+
+      hiddenItems.forEach(el => {
+        el.style.display = isCurrentlyHidden ? 'inline-flex' : 'none';
+      });
+
+      if (moreBtn) {
+        moreBtn.textContent = isCurrentlyHidden ? '閉じる ▲' : `+他${hiddenItems.length}品を表示`;
+      }
+    }
+
     deleteTx(id) {
-      if (confirm('この記録を削除しますか？')) {
+      if (confirm('この記録をすべて削除しますか？')) {
         store.deleteTransaction(id);
         this.showToast('記録を削除しました');
+      }
+    }
+
+    deleteTxItem(txId, itemId, itemName) {
+      if (confirm(`品目「${itemName}」をこの記録から削除しますか？`)) {
+        store.deleteTransactionItem(txId, itemId);
+        this.showToast(`「${itemName}」を削除しました`);
+      }
+    }
+
+    clearFridgeConsumed() {
+      const count = store.fridgeItems.filter(f => f.isConsumed).length;
+      if (count === 0) {
+        alert('消費済みのアイテムはありません。');
+        return;
+      }
+      if (confirm(`消費済みの食材 ${count}品 を冷蔵庫から削除しますか？`)) {
+        store.clearFridgeConsumed();
+        this.renderFridge();
+        this.renderHome();
+        this.showToast('消費済みの食材を削除しました');
+      }
+    }
+
+    clearAllFridge() {
+      if (store.fridgeItems.length === 0) return;
+      if (confirm('冷蔵庫ストックをすべて空にしますか？')) {
+        store.clearAllFridge();
+        this.renderFridge();
+        this.renderHome();
+        this.showToast('冷蔵庫を空にしました');
+      }
+    }
+
+    clearAllData() {
+      if (confirm('【注意】すべての家計簿データおよび冷蔵庫ストックを消去して空にしますか？\n（デモデータも消去され、0件から開始できます）')) {
+        store.clearAllData();
+        this.showToast('すべてのデータを初期化しました（0件）✨');
+      }
+    }
+
+    loadDemoData() {
+      if (confirm('デモデータ（初期サンプルデータ）を読み込みますか？\n現在のデータは上書きされます。')) {
+        store.loadDemoData();
+        this.showToast('デモデータを読み込みました✨');
       }
     }
 
