@@ -2,7 +2,7 @@
  * UI操作・レンダリング・インタラクションコントローラー
  */
 import { store, ReceiptImageDB } from './store.js';
-import { parseReceiptWithGemini, simulateReceiptScan, DEMO_RECEIPTS } from './gemini.js';
+import { parseReceiptWithGemini, simulateReceiptScan, testGeminiApiKey, sanitizeApiKey, DEMO_RECEIPTS } from './gemini.js';
 import { renderCharts } from './charts.js';
 
 export class AppUI {
@@ -123,7 +123,9 @@ export class AppUI {
     if (settingsForm) {
       settingsForm.addEventListener('submit', (e) => {
         e.preventDefault();
-        const apiKey = document.getElementById('cfg-api-key').value.trim();
+        const rawKey = document.getElementById('cfg-api-key').value;
+        const apiKey = sanitizeApiKey(rawKey);
+        document.getElementById('cfg-api-key').value = apiKey;
         const budget = Number(document.getElementById('cfg-budget').value) || 75000;
         const savePhoto = document.getElementById('cfg-save-photo') ? document.getElementById('cfg-save-photo').checked : false;
         store.saveSettings({
@@ -131,7 +133,59 @@ export class AppUI {
           monthlyBudget: budget,
           saveReceiptPhotos: savePhoto
         });
-        this.showToast('設定を保存しました✨');
+        this.showToast(apiKey ? '設定を保存しました✨（Gemini AIが有効です）' : '設定を保存しました（デモモードで動作します）');
+      });
+    }
+
+    // APIキーの表示・非表示切り替え
+    const toggleKeyBtn = document.getElementById('btn-toggle-cfg-key');
+    const apiKeyInput = document.getElementById('cfg-api-key');
+    if (toggleKeyBtn && apiKeyInput) {
+      toggleKeyBtn.addEventListener('click', () => {
+        if (apiKeyInput.type === 'password') {
+          apiKeyInput.type = 'text';
+          toggleKeyBtn.innerHTML = '<i data-lucide="eye-off"></i>';
+        } else {
+          apiKeyInput.type = 'password';
+          toggleKeyBtn.innerHTML = '<i data-lucide="eye"></i>';
+        }
+        if (window.lucide) window.lucide.createIcons();
+      });
+    }
+
+    // APIキー疎通テスト
+    const testKeyBtn = document.getElementById('btn-test-gemini-key');
+    const testResultEl = document.getElementById('cfg-api-key-test-result');
+    if (testKeyBtn && apiKeyInput && testResultEl) {
+      testKeyBtn.addEventListener('click', async () => {
+        const rawKey = apiKeyInput.value;
+        const cleanKey = sanitizeApiKey(rawKey);
+        apiKeyInput.value = cleanKey;
+
+        if (!cleanKey) {
+          testResultEl.className = 'api-test-result error';
+          testResultEl.style.display = 'block';
+          testResultEl.textContent = '⚠️ APIキーが入力されていません。Google AI Studioから取得したキーを入力してください。';
+          return;
+        }
+
+        testResultEl.className = 'api-test-result loading';
+        testResultEl.style.display = 'block';
+        testResultEl.innerHTML = '<span class="loading-spinner-inline"></span> Gemini APIに接続テスト中...';
+
+        try {
+          const result = await testGeminiApiKey(cleanKey);
+          if (result.ok) {
+            testResultEl.className = 'api-test-result success';
+            testResultEl.innerHTML = `✅ ${result.message}`;
+          } else {
+            testResultEl.className = 'api-test-result error';
+            testResultEl.innerHTML = `❌ ${result.message}`;
+          }
+        } catch (err) {
+          testResultEl.className = 'api-test-result error';
+          testResultEl.textContent = `❌ 通信テスト失敗: ${err.message || err}`;
+        }
       });
     }
 
@@ -534,11 +588,18 @@ export class AppUI {
     try {
       // スマホカメラの高画質写真をCanvasで軽量化圧縮（約70〜100KB）
       const base64 = await this.compressImage(file, 1200, 0.8) || await this.fileToBase64(file);
-      const apiKey = store.settings.geminiApiKey;
+      const apiKey = sanitizeApiKey(store.settings.geminiApiKey);
 
       let result;
       if (apiKey) {
-        result = await parseReceiptWithGemini(base64, 'image/jpeg', apiKey);
+        try {
+          result = await parseReceiptWithGemini(base64, 'image/jpeg', apiKey);
+        } catch (apiErr) {
+          console.warn('Gemini API call failed, falling back to demo scan:', apiErr);
+          // API通信失敗時: 写真破棄を避け、デモ認識でフォールバックしてユーザーに通知
+          result = await simulateReceiptScan(this.selectedDemoIndex++);
+          this.showToast(`⚠️ AI通信エラー: ${apiErr.message}（撮影写真はそのまま保持し、デモ解析に切り替えました）`, 8000);
+        }
       } else {
         // APIキー未設定時はデモスキャンで代替し、通知を表示
         result = await simulateReceiptScan(this.selectedDemoIndex++);

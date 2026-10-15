@@ -685,16 +685,104 @@
    - shelfLifeDays: 食品の場合の一般的な冷蔵・冷暗所での消費目安日数 (例: 刺身なら1, 牛乳なら6, 野菜なら5, 食パンなら4)
 `;
 
-  async function parseReceiptWithGemini(base64Image, mimeType = 'image/jpeg', apiKey = '') {
+  // 利用可能なGeminiモデル（優先順）
+  const CANDIDATE_MODELS = [
+    'gemini-3.5-flash',
+    'gemini-3.8-flash',
+    'gemini-3.5-flash-lite',
+    'gemini-2.5-flash'
+  ];
+
+  function sanitizeApiKey(key) {
+    return (key || '')
+      .trim()
+      .replace(/^["']|["']$/g, '')
+      .replace(/[\u200B-\u200D\uFEFF]/g, '');
+  }
+
+  function formatGeminiErrorMessage(status, rawMessage = '') {
+    if (status === 400) {
+      return 'APIキーが無効、またはリクエスト形式が不正です。APIキーを再確認してください。';
+    }
+    if (status === 403) {
+      return 'アクセス権限がありません(403)。APIキーの利用制限やGoogle AI Studioの設定を確認してください。';
+    }
+    if (status === 404) {
+      return '指定されたAIモデルが見つかりません(404)。';
+    }
+    if (status === 429) {
+      return 'リクエスト上限(レートリミット)に達しました(429)。数十秒おいて再試行してください。';
+    }
+    if (status >= 500) {
+      return `GoogleのAIサーバー側で一時的なエラーが発生しました(${status})。少し待ってから再試行してください。`;
+    }
+    return rawMessage ? `APIエラー(${status}): ${rawMessage}` : `通信エラーが発生しました(${status})`;
+  }
+
+  async function testGeminiApiKey(rawApiKey) {
+    const apiKey = sanitizeApiKey(rawApiKey);
+    if (!apiKey) {
+      return { ok: false, message: 'APIキーが入力されていません。' };
+    }
+
+    let lastError = null;
+
+    for (const modelName of CANDIDATE_MODELS) {
+      try {
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey
+          },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: 'ping' }] }],
+            generationConfig: { maxOutputTokens: 5 }
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          const status = response.status;
+          const msg = errorData.error?.message || response.statusText;
+
+          if (status === 404) {
+            lastError = new Error(`モデル ${modelName} は利用できません (${msg})`);
+            continue;
+          }
+          return {
+            ok: false,
+            message: formatGeminiErrorMessage(status, msg)
+          };
+        }
+
+        return {
+          ok: true,
+          model: modelName,
+          message: `接続成功！最新モデル「${modelName}」で正常にAI通信が確認できました✨`
+        };
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    return {
+      ok: false,
+      message: lastError ? (lastError.message || '通信に失敗しました') : 'Gemini APIへの接続に失敗しました。インターネット接続をご確認ください。'
+    };
+  }
+
+  async function parseReceiptWithGemini(base64Image, mimeType = 'image/jpeg', rawApiKey = '') {
+    const apiKey = sanitizeApiKey(rawApiKey);
     if (!apiKey) {
       throw new Error('Gemini APIキーが設定されていません。設定画面でAPIキーを入力するか、デモモードをご利用ください。');
     }
 
     const cleanBase64 = base64Image.replace(/^data:image\/[a-z]+;base64,/, '');
-    const candidateModels = ['gemini-2.5-flash', 'gemini-1.5-flash'];
     let lastError = null;
 
-    for (const modelName of candidateModels) {
+    for (const modelName of CANDIDATE_MODELS) {
       try {
         const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
         const requestBody = {
@@ -704,13 +792,26 @@
 
         const response = await fetch(endpoint, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey
+          },
           body: JSON.stringify(requestBody)
         });
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
-          throw new Error(`APIエラー (${response.status}): ${errorData.error?.message || response.statusText}`);
+          const status = response.status;
+          const rawMsg = errorData.error?.message || response.statusText;
+          const formatted = formatGeminiErrorMessage(status, rawMsg);
+
+          if (status === 404) {
+            console.warn(`Model ${modelName} returned 404, trying next...`);
+            lastError = new Error(formatted);
+            continue;
+          }
+
+          throw new Error(formatted);
         }
 
         const resData = await response.json();
@@ -722,6 +823,12 @@
         else if (cleaned.startsWith('```')) cleaned = cleaned.substring(3);
         if (cleaned.endsWith('```')) cleaned = cleaned.substring(0, cleaned.length - 3);
         cleaned = cleaned.trim();
+
+        const firstBrace = cleaned.indexOf('{');
+        const lastBrace = cleaned.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+          cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+        }
 
         const data = JSON.parse(cleaned);
         const items = (data.items || []).map(item => {
@@ -749,6 +856,9 @@
       } catch (err) {
         console.warn(`Model ${modelName} failed:`, err);
         lastError = err;
+        if (err.message && (err.message.includes('APIキーが無効') || err.message.includes('400') || err.message.includes('403'))) {
+          throw err;
+        }
       }
     }
     throw lastError || new Error('レシートの解析に失敗しました。');
@@ -1077,7 +1187,9 @@
       if (settingsForm) {
         settingsForm.addEventListener('submit', (e) => {
           e.preventDefault();
-          const apiKey = document.getElementById('cfg-api-key').value.trim();
+          const rawKey = document.getElementById('cfg-api-key').value;
+          const apiKey = sanitizeApiKey(rawKey);
+          document.getElementById('cfg-api-key').value = apiKey;
           const budget = Number(document.getElementById('cfg-budget').value) || 75000;
           const savePhoto = document.getElementById('cfg-save-photo') ? document.getElementById('cfg-save-photo').checked : false;
           store.saveSettings({
@@ -1085,7 +1197,59 @@
             monthlyBudget: budget,
             saveReceiptPhotos: savePhoto
           });
-          this.showToast('設定を保存しました✨');
+          this.showToast(apiKey ? '設定を保存しました✨（Gemini AIが有効です）' : '設定を保存しました（デモモードで動作します）');
+        });
+      }
+
+      // APIキーの表示・非表示切り替え
+      const toggleKeyBtn = document.getElementById('btn-toggle-cfg-key');
+      const apiKeyInput = document.getElementById('cfg-api-key');
+      if (toggleKeyBtn && apiKeyInput) {
+        toggleKeyBtn.addEventListener('click', () => {
+          if (apiKeyInput.type === 'password') {
+            apiKeyInput.type = 'text';
+            toggleKeyBtn.innerHTML = '<i data-lucide="eye-off"></i>';
+          } else {
+            apiKeyInput.type = 'password';
+            toggleKeyBtn.innerHTML = '<i data-lucide="eye"></i>';
+          }
+          if (window.lucide) window.lucide.createIcons();
+        });
+      }
+
+      // APIキー疎通テスト
+      const testKeyBtn = document.getElementById('btn-test-gemini-key');
+      const testResultEl = document.getElementById('cfg-api-key-test-result');
+      if (testKeyBtn && apiKeyInput && testResultEl) {
+        testKeyBtn.addEventListener('click', async () => {
+          const rawKey = apiKeyInput.value;
+          const cleanKey = sanitizeApiKey(rawKey);
+          apiKeyInput.value = cleanKey;
+
+          if (!cleanKey) {
+            testResultEl.className = 'api-test-result error';
+            testResultEl.style.display = 'block';
+            testResultEl.textContent = '⚠️ APIキーが入力されていません。Google AI Studioから取得したキーを入力してください。';
+            return;
+          }
+
+          testResultEl.className = 'api-test-result loading';
+          testResultEl.style.display = 'block';
+          testResultEl.innerHTML = '<span class="loading-spinner-inline"></span> Gemini APIに接続テスト中...';
+
+          try {
+            const result = await testGeminiApiKey(cleanKey);
+            if (result.ok) {
+              testResultEl.className = 'api-test-result success';
+              testResultEl.innerHTML = `✅ ${result.message}`;
+            } else {
+              testResultEl.className = 'api-test-result error';
+              testResultEl.innerHTML = `❌ ${result.message}`;
+            }
+          } catch (err) {
+            testResultEl.className = 'api-test-result error';
+            testResultEl.textContent = `❌ 通信テスト失敗: ${err.message || err}`;
+          }
         });
       }
 
@@ -1457,7 +1621,7 @@
 
       try {
         const base64 = await this.compressImage(file, 1200, 0.8) || await this.fileToBase64(file);
-        const apiKey = store.settings.geminiApiKey;
+        const apiKey = sanitizeApiKey(store.settings.geminiApiKey);
 
         let parsedData = null;
         if (apiKey) {
@@ -1465,7 +1629,7 @@
             parsedData = await parseReceiptWithGemini(base64, file.type, apiKey);
           } catch (geminiErr) {
             console.warn('Gemini API call failed, falling back to smart simulation:', geminiErr);
-            this.showToast('API通信に失敗したため、デモ抽出モードで起動します');
+            this.showToast(`⚠️ AI通信エラー: ${geminiErr.message}（撮影写真は保持し、デモ解析に切り替えました）`, 8000);
             parsedData = await simulateReceiptScan(this.selectedDemoIndex++);
           }
         } else {

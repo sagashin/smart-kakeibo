@@ -330,12 +330,28 @@
         </header>
 
         <form id="settings-form" class="card">
-          <h4 style="font-size: 13px; font-weight: 700; margin-bottom: 12px;">AI・API連携設定</h4>
+          <h4 style="font-size: 13px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+            <i data-lucide="sparkles" style="color: #10B981; width: 16px; height: 16px;"></i> AI・API連携設定
+          </h4>
           <div class="form-group">
-            <label for="cfg-api-key">Google Gemini APIキー</label>
-            <input type="password" id="cfg-api-key" class="form-control" placeholder="AIzaSy... (任意)">
-            <small style="font-size: 11px; color: var(--text-muted); display: block; margin-top: 4px;">
-              ※未入力の場合は高機能なデモ解析モードで動作します。ご自身のGemini APIキーを設定すると、本物の写真からAI解析が行えます。キーはブラウザの端末内にのみ安全に保管されます。
+            <label for="cfg-api-key">Google Gemini APIキー (Gemini 3.5 Flash / 3.8 Flash 対応)</label>
+            <div class="input-with-action">
+              <input type="password" id="cfg-api-key" class="form-control" placeholder="AIzaSy... (任意)" autocomplete="off">
+              <button type="button" class="btn-input-action" id="btn-toggle-cfg-key" title="キーの表示/非表示" aria-label="キーの表示切り替え">
+                <i data-lucide="eye"></i>
+              </button>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center; margin-top: 8px;">
+              <button type="button" class="btn btn-subtle" id="btn-test-gemini-key" style="font-size: 11px; padding: 6px 12px;">
+                <i data-lucide="zap" style="width: 13px; height: 13px;"></i> 接続テスト
+              </button>
+              <small style="font-size: 11px; color: var(--text-muted);">
+                キーの通信可否・有効性を即座に診断します
+              </small>
+            </div>
+            <div id="cfg-api-key-test-result" class="api-test-result" style="display: none; margin-top: 8px;"></div>
+            <small style="font-size: 11px; color: var(--text-muted); display: block; margin-top: 8px; line-height: 1.5;">
+              ※未入力の場合は高機能なデモ解析モードで動作します。<a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" style="color: var(--color-primary); text-decoration: underline; font-weight: 600;">Google AI Studio</a> で無料取得できるAPIキーを設定すると、本物のレシート写真から店舗名・品目・賞味期限を最新AIが自動抽出します。キーはブラウザ内にのみ安全に保管されます。
             </small>
           </div>
 
@@ -643,6 +659,6 @@
   <div id="toast-notification" class="toast">記録を保存しました！</div>
 
   <!-- Scripts: self-contained bundle for seamless local file & server execution -->
-  <script src="./js/bundle.js?v=20261015_09"></script>
+  <script src="./js/bundle.js?v=20261015_11"></script>
 </body>
 </html>
