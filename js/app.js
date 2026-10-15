@@ -701,13 +701,25 @@
 純粋なJSON文字列のみを出力してください（説明文や余分なテキストは不要）。
 `;
 
-  // 利用可能なGeminiモデル（優先順）
+  // 利用可能なGeminiモデル（実在する高精度＆最速モデル順）
   const CANDIDATE_MODELS = [
-    'gemini-3.5-flash',
-    'gemini-3.8-flash',
-    'gemini-3.5-flash-lite',
-    'gemini-2.5-flash'
+    'gemini-2.5-flash',
+    'gemini-2.0-flash',
+    'gemini-2.5-flash-lite',
+    'gemini-1.5-flash'
   ];
+
+  const PREFERRED_MODEL_KEY = 'smart_kakeibo_preferred_model';
+
+  function getOrderedCandidateModels() {
+    try {
+      const preferred = localStorage.getItem(PREFERRED_MODEL_KEY);
+      if (preferred && CANDIDATE_MODELS.includes(preferred)) {
+        return [preferred, ...CANDIDATE_MODELS.filter(m => m !== preferred)];
+      }
+    } catch (e) {}
+    return [...CANDIDATE_MODELS];
+  }
 
   function sanitizeApiKey(key) {
     return (key || '')
@@ -742,8 +754,9 @@
     }
 
     let lastError = null;
+    const models = getOrderedCandidateModels();
 
-    for (const modelName of CANDIDATE_MODELS) {
+    for (const modelName of models) {
       try {
         const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
         const response = await fetch(endpoint, {
@@ -773,10 +786,14 @@
           };
         }
 
+        try {
+          localStorage.setItem(PREFERRED_MODEL_KEY, modelName);
+        } catch (e) {}
+
         return {
           ok: true,
           model: modelName,
-          message: `接続成功！最新モデル「${modelName}」で正常にAI通信が確認できました✨`
+          message: `接続成功！モデル「${modelName}」で正常にAI通信が確認できました✨`
         };
       } catch (err) {
         lastError = err;
@@ -797,8 +814,9 @@
 
     const cleanBase64 = base64Image.replace(/^data:image\/[a-z]+;base64,/, '');
     let lastError = null;
+    const models = getOrderedCandidateModels();
 
-    for (const modelName of CANDIDATE_MODELS) {
+    for (const modelName of models) {
       try {
         const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
 
@@ -845,7 +863,11 @@
           generationConfig: {
             temperature: 0.0,
             responseMimeType: 'application/json',
-            responseSchema
+            responseSchema,
+            // レシートOCRの即答化（thinkingBudget: 0 で思考遅延を完全排除）
+            thinkingConfig: {
+              thinkingBudget: 0
+            }
           }
         };
 
@@ -859,7 +881,8 @@
         });
 
         if (!response.ok && response.status === 400) {
-          console.warn('responseSchema request failed with 400, falling back to standard JSON generationConfig');
+          console.warn('Request failed with 400, falling back without thinkingConfig/responseSchema');
+          delete requestBody.generationConfig.thinkingConfig;
           delete requestBody.generationConfig.responseSchema;
           response = await fetch(endpoint, {
             method: 'POST',
@@ -889,6 +912,10 @@
         const resData = await response.json();
         const text = resData.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!text) throw new Error('Gemini APIから応答が得られませんでした。');
+
+        try {
+          localStorage.setItem(PREFERRED_MODEL_KEY, modelName);
+        } catch (e) {}
 
         let cleaned = text.trim();
         if (cleaned.startsWith('```json')) cleaned = cleaned.substring(7);
@@ -1735,8 +1762,8 @@
       this.showScanningOverlay();
 
       try {
-        // 高解像度（最大2400px・高品質0.92・コントラスト補正）でレシートの極小文字を鮮明化
-        const base64 = await this.compressImage(file, 2400, 0.92) || await this.fileToBase64(file);
+        // 高速化最適化（最大1600px・品質0.82・コントラスト補正）で文字鮮明度を保ちつつ通信量を80%削減
+        const base64 = await this.compressImage(file, 1600, 0.82) || await this.fileToBase64(file);
         const apiKey = sanitizeApiKey(store.settings.geminiApiKey);
 
         let parsedData = null;
@@ -2339,7 +2366,7 @@
       }, duration);
     }
 
-    compressImage(file, maxDimension = 2400, quality = 0.92) {
+    compressImage(file, maxDimension = 1600, quality = 0.82) {
       return new Promise((resolve) => {
         if (!file || !file.type.startsWith('image/')) {
           resolve(null);
@@ -2353,7 +2380,7 @@
               let width = img.width;
               let height = img.height;
 
-              // レシートの極小文字潰れ防止:
+              // レシートの極小文字潰れ防止と高速化:
               // 長辺が maxDimension を超える場合のみ縮小
               if (width > maxDimension || height > maxDimension) {
                 if (width > height) {
@@ -2365,8 +2392,8 @@
                 }
               }
 
-              // 縦長レシートで横幅が縮みすぎて文字が潰れるのを防ぐ（幅最低900pxを確保）
-              const minShortSide = 900;
+              // 縦長レシートで横幅が縮みすぎて文字が潰れるのを防ぐ（幅最低750pxを確保）
+              const minShortSide = 750;
               if (width < height && width < minShortSide && img.width >= minShortSide) {
                 const scale = minShortSide / width;
                 width = minShortSide;

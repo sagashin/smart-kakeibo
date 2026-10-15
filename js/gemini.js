@@ -38,13 +38,27 @@ const SYSTEM_PROMPT = `
 純粋なJSON文字列のみを出力してください（説明文や余分なテキストは不要）。
 `;
 
-// 利用可能なGeminiモデル（認識精度と速度順）
+// 利用可能なGeminiモデル（実在する高精度＆最速モデル順）
 export const CANDIDATE_MODELS = [
-  'gemini-3.5-flash',
-  'gemini-3.8-flash',
-  'gemini-3.5-flash-lite',
-  'gemini-2.5-flash'
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-1.5-flash'
 ];
+
+const PREFERRED_MODEL_KEY = 'smart_kakeibo_preferred_model';
+
+export function getOrderedCandidateModels() {
+  try {
+    const preferred = localStorage.getItem(PREFERRED_MODEL_KEY);
+    if (preferred && CANDIDATE_MODELS.includes(preferred)) {
+      return [preferred, ...CANDIDATE_MODELS.filter(m => m !== preferred)];
+    }
+  } catch (e) {
+    // localStorage unavailable
+  }
+  return [...CANDIDATE_MODELS];
+}
 
 /**
  * APIキーのサニタイズ（前後の空白、引用符、不可視文字を除去）
@@ -88,8 +102,9 @@ export async function testGeminiApiKey(rawApiKey) {
   }
 
   let lastError = null;
+  const models = getOrderedCandidateModels();
 
-  for (const modelName of CANDIDATE_MODELS) {
+  for (const modelName of models) {
     try {
       const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
       const response = await fetch(endpoint, {
@@ -118,6 +133,11 @@ export async function testGeminiApiKey(rawApiKey) {
           message: formatGeminiErrorMessage(status, msg)
         };
       }
+
+      // 成功したモデルを優先モデルとしてキャッシュ
+      try {
+        localStorage.setItem(PREFERRED_MODEL_KEY, modelName);
+      } catch (e) {}
 
       return {
         ok: true,
@@ -148,8 +168,9 @@ export async function parseReceiptWithGemini(base64Image, mimeType = 'image/jpeg
   const cleanBase64 = base64Image.replace(/^data:image\/[a-z]+;base64,/, '');
 
   let lastError = null;
+  const models = getOrderedCandidateModels();
 
-  for (const modelName of CANDIDATE_MODELS) {
+  for (const modelName of models) {
     try {
       const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
 
@@ -195,9 +216,13 @@ export async function parseReceiptWithGemini(base64Image, mimeType = 'image/jpeg
           }
         ],
         generationConfig: {
-          temperature: 0.0, // 決定論的・ブレを完全排除して精度最大化
+          temperature: 0.0,
           responseMimeType: 'application/json',
-          responseSchema
+          responseSchema,
+          // レシートOCRは思考ステップ不要（thinkingBudget: 0 で即座に出力開始させレイテンシを最小化）
+          thinkingConfig: {
+            thinkingBudget: 0
+          }
         }
       };
 
@@ -210,9 +235,10 @@ export async function parseReceiptWithGemini(base64Image, mimeType = 'image/jpeg
         body: JSON.stringify(requestBody)
       });
 
-      // スキーマ指定に未対応の古いモデル等のフォールバック
+      // thinkingConfig または responseSchema に非対応のモデル等のフォールバック
       if (!response.ok && response.status === 400) {
-        console.warn('responseSchema request failed with 400, falling back to standard JSON generationConfig');
+        console.warn('Request failed with 400, falling back without thinkingConfig/responseSchema');
+        delete requestBody.generationConfig.thinkingConfig;
         delete requestBody.generationConfig.responseSchema;
         response = await fetch(endpoint, {
           method: 'POST',
@@ -246,6 +272,11 @@ export async function parseReceiptWithGemini(base64Image, mimeType = 'image/jpeg
         throw new Error('Gemini APIから応答が得られませんでした。');
       }
 
+      // 成功したモデルを優先モデルとしてキャッシュ
+      try {
+        localStorage.setItem(PREFERRED_MODEL_KEY, modelName);
+      } catch (e) {}
+
       return cleanAndParseJson(text);
     } catch (err) {
       console.warn(`Model ${modelName} failed, trying next...`, err);
@@ -258,6 +289,7 @@ export async function parseReceiptWithGemini(base64Image, mimeType = 'image/jpeg
 
   throw lastError || new Error('レシートの解析に失敗しました。');
 }
+
 
 /**
  * AIの返却したJSONをクレンジングしてパース
