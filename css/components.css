@@ -4,11 +4,14 @@
 
 /* --- ボトムナビゲーション --- */
 .bottom-nav {
-  position: absolute;
+  position: fixed;
   bottom: 0;
-  left: 0;
-  right: 0;
-  height: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 440px;
+  height: calc(72px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   background: var(--bg-glass);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -16,9 +19,22 @@
   display: flex;
   align-items: center;
   justify-content: space-around;
-  padding: 0 8px;
-  z-index: 100;
-  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.04);
+  padding-left: 8px;
+  padding-right: 8px;
+  z-index: 500;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05);
+}
+
+body.full-width-mode .bottom-nav {
+  max-width: 900px;
+}
+
+@media (max-width: 500px) {
+  .bottom-nav {
+    max-width: 100%;
+    left: 0;
+    transform: none;
+  }
 }
 
 .nav-item {
@@ -491,7 +507,8 @@
 .modal-sheet {
   width: 100%;
   max-width: 440px;
-  max-height: 85vh;
+  max-height: 88vh;
+  max-height: 88dvh;
   background: var(--bg-surface);
   border-top-left-radius: var(--radius-xl);
   border-top-right-radius: var(--radius-xl);
@@ -501,6 +518,7 @@
   transition: transform var(--transition-normal);
   overflow: hidden;
   box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.2);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 .modal-overlay.active .modal-sheet {

@@ -5,24 +5,34 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+html {
+  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
+}
+
 body {
   font-family: var(--font-family-body);
   background: #0B0F19; /* PC閲覧時の背景（ディープダーク） */
   color: var(--text-main);
-  min-height: 100vh;
+  height: 100%;
+  height: 100dvh;
+  margin: 0;
+  padding: 0;
   display: flex;
   justify-content: center;
   align-items: center;
-  overflow-x: hidden;
+  overflow: hidden;
   line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
 }
 
 /* スマホ表示コンテナ（モバイルデバイスでは全画面、PCではスマホフレーム） */
 #app-viewport {
   width: 100%;
   max-width: 440px;
-  min-height: 100vh;
-  height: 100vh;
+  height: 100%;
+  height: 100dvh;
   background-color: var(--bg-app);
   display: flex;
   flex-direction: column;
@@ -80,10 +90,11 @@ body.full-width-mode #app-viewport {
 
 /* メインスクロール可能コンテンツ領域 */
 .app-content-scroll {
-  flex: 1;
+  flex: 1 1 0%;
+  min-height: 0; /* flexアイテムが内容物によって伸びるのを防ぐ必須プロパティ */
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 16px 16px 95px 16px; /* 下部ナビ分の余白 */
+  padding: 16px 16px calc(90px + env(safe-area-inset-bottom, 0px)) 16px; /* 下部ナビ + ホームバー分の余白 */
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
 }
