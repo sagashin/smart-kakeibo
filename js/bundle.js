@@ -701,96 +701,44 @@
 純粋なJSON文字列のみを出力してください（説明文や余分なテキストは不要）。
 `;
 
-  // フォールバック用の標準Geminiモデル一覧（実在する高精度＆安定稼働モデル）
-  const FALLBACK_MODELS = [
-    'gemini-1.5-flash',
-    'gemini-1.5-flash-latest',
-    'gemini-2.0-flash',
-    'gemini-2.0-flash-exp',
-    'gemini-2.5-flash',
-    'gemini-2.5-flash-lite',
-    'gemini-1.5-pro',
-    'gemini-1.5-pro-latest'
+  // 利用するGeminiモデル（Gemini 3系・推奨順）
+  // ※ Gemini 2.5系は過去利用者限定、1.5/2.0系は提供終了のため使用しない
+  const CANDIDATE_MODELS = [
+    'gemini-3.8-flash',
+    'gemini-3.5-flash',
+    'gemini-3.6-flash',
+    'gemini-3.5-flash-lite'
   ];
 
-  const PREFERRED_MODEL_KEY = 'smart_kakeibo_preferred_model';
-  const DETECTED_MODELS_KEY = 'smart_kakeibo_detected_models';
+  // モデルごとの思考レベル（Gemini 3 は thinkingBudget ではなく thinkingLevel を使用）
+  // レシートOCRは深い推論が不要なため、各モデルで選べる最も軽いレベルを指定して高速化
+  const THINKING_LEVELS = {
+    'gemini-3.8-flash': 'low',
+    'gemini-3.5-flash': 'minimal',
+    'gemini-3.6-flash': 'minimal',
+    'gemini-3.5-flash-lite': 'minimal'
+  };
 
-  /**
-   * ユーザーのAPIキーで実際に利用可能なモデル一覧をGoogle APIから直接取得
-   */
-  async function fetchAvailableGeminiModels(rawApiKey) {
-    const apiKey = sanitizeApiKey(rawApiKey);
-    if (!apiKey) return [];
-
-    try {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
-      const res = await fetch(endpoint);
-      if (!res.ok) {
-        console.warn(`ListModels failed with status ${res.status}`);
-        return [];
-      }
-      const data = await res.json();
-      const models = (data.models || [])
-        .filter(m => m.supportedGenerationMethods?.includes('generateContent'))
-        .map(m => m.name.replace(/^models\//, ''));
-
-      if (models.length > 0) {
-        try {
-          sessionStorage.setItem(DETECTED_MODELS_KEY, JSON.stringify(models));
-        } catch (e) {}
-      }
-      return models;
-    } catch (err) {
-      console.warn('Failed to fetch available models:', err);
-      return [];
-    }
+  function buildThinkingConfig(modelName) {
+    const level = THINKING_LEVELS[modelName];
+    return level ? { thinkingLevel: level } : undefined;
   }
 
-  /**
-   * 試行するモデルの優先順序リストを動的生成（実在するモデルのみを厳選）
-   */
-  async function getOrderedCandidateModels(rawApiKey) {
-    const apiKey = sanitizeApiKey(rawApiKey);
-    let available = [];
+  const PREFERRED_MODEL_KEY = 'smart_kakeibo_preferred_model';
 
+  function getOrderedCandidateModels() {
     try {
-      const cached = sessionStorage.getItem(DETECTED_MODELS_KEY);
-      if (cached) available = JSON.parse(cached);
+      const preferred = localStorage.getItem(PREFERRED_MODEL_KEY);
+      if (preferred && CANDIDATE_MODELS.includes(preferred)) {
+        return [preferred, ...CANDIDATE_MODELS.filter(m => m !== preferred)];
+      }
+      if (preferred) localStorage.removeItem(PREFERRED_MODEL_KEY);
     } catch (e) {}
+    return [...CANDIDATE_MODELS];
+  }
 
-    if (!available || available.length === 0) {
-      available = await fetchAvailableGeminiModels(apiKey);
-    }
-
-    let preferred = null;
-    try {
-      preferred = localStorage.getItem(PREFERRED_MODEL_KEY);
-    } catch (e) {}
-
-    const priorityRank = (name) => {
-      if (name === preferred) return 0;
-      if (name === 'gemini-1.5-flash') return 1;
-      if (name === 'gemini-1.5-flash-latest') return 2;
-      if (name === 'gemini-2.0-flash') return 3;
-      if (name === 'gemini-2.5-flash') return 4;
-      if (name === 'gemini-2.5-flash-lite') return 5;
-      if (name.includes('1.5-flash')) return 6;
-      if (name.includes('2.0-flash')) return 7;
-      if (name.includes('flash')) return 10;
-      if (name.includes('pro')) return 20;
-      return 30;
-    };
-
-    if (available && available.length > 0) {
-      const sorted = [...available].sort((a, b) => priorityRank(a) - priorityRank(b));
-      return sorted;
-    }
-
-    if (preferred && FALLBACK_MODELS.includes(preferred)) {
-      return [preferred, ...FALLBACK_MODELS.filter(m => m !== preferred)];
-    }
-    return [...FALLBACK_MODELS];
+  function isApiKeyError(rawMessage = '') {
+    return /API key not valid|API_KEY_INVALID|API key expired/i.test(rawMessage);
   }
 
   function sanitizeApiKey(key) {
@@ -802,7 +750,10 @@
 
   function formatGeminiErrorMessage(status, rawMessage = '') {
     if (status === 400) {
-      return 'APIキーが無効、またはリクエスト形式が不正です。APIキーを再確認してください。';
+      if (isApiKeyError(rawMessage)) {
+        return 'APIキーが無効です。Google AI Studioで発行したキーを再確認してください。';
+      }
+      return `リクエストエラー(400): ${rawMessage || '不明なエラー'}`;
     }
     if (status === 403) {
       return 'アクセス権限がありません(403)。APIキーの利用制限やGoogle AI Studioの設定を確認してください。';
@@ -825,7 +776,7 @@
       return { ok: false, message: 'APIキーが入力されていません。' };
     }
 
-    const models = await getOrderedCandidateModels(apiKey);
+    const models = getOrderedCandidateModels();
     let lastError = null;
 
     for (const modelName of models) {
@@ -840,7 +791,7 @@
           },
           body: JSON.stringify({
             contents: [{ parts: [{ text: 'ping' }] }],
-            generationConfig: { maxOutputTokens: 5 }
+            generationConfig: { thinkingConfig: buildThinkingConfig(cleanModel) }
           })
         });
 
@@ -849,7 +800,7 @@
           const status = response.status;
           const msg = errorData.error?.message || response.statusText;
 
-          if (status === 404) {
+          if (status === 404 || (status === 400 && !isApiKeyError(msg))) {
             lastError = new Error(`モデル ${cleanModel} は利用できません (${msg})`);
             continue;
           }
@@ -866,7 +817,7 @@
         return {
           ok: true,
           model: cleanModel,
-          message: `接続成功！利用可能なAIモデル「${cleanModel}」が検出され、正常に通信できました✨`
+          message: `接続成功！AIモデル「${cleanModel}」で正常に通信できました✨`
         };
       } catch (err) {
         lastError = err;
@@ -887,7 +838,7 @@
 
     const cleanBase64 = base64Image.replace(/^data:image\/[a-z]+;base64,/, '');
     let lastError = null;
-    const models = await getOrderedCandidateModels(apiKey);
+    const models = getOrderedCandidateModels();
 
     for (const modelName of models) {
       const cleanModel = modelName.replace(/^models\//, '');
@@ -935,13 +886,9 @@
             }
           ],
           generationConfig: {
-            temperature: 0.0,
             responseMimeType: 'application/json',
             responseSchema,
-            // レシートOCRの即答化（thinkingBudget: 0 で思考遅延を完全排除）
-            thinkingConfig: {
-              thinkingBudget: 0
-            }
+            thinkingConfig: buildThinkingConfig(cleanModel)
           }
         };
 
@@ -955,17 +902,20 @@
         });
 
         if (!response.ok && response.status === 400) {
-          console.warn('Request failed with 400, falling back without thinkingConfig/responseSchema');
-          delete requestBody.generationConfig.thinkingConfig;
-          delete requestBody.generationConfig.responseSchema;
-          response = await fetch(endpoint, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-goog-api-key': apiKey
-            },
-            body: JSON.stringify(requestBody)
-          });
+          const firstErr = await response.clone().json().catch(() => ({}));
+          if (!isApiKeyError(firstErr.error?.message)) {
+            console.warn(`[${cleanModel}] 400: ${firstErr.error?.message} → thinkingConfig/responseSchema なしで再試行`);
+            delete requestBody.generationConfig.thinkingConfig;
+            delete requestBody.generationConfig.responseSchema;
+            response = await fetch(endpoint, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-goog-api-key': apiKey
+              },
+              body: JSON.stringify(requestBody)
+            });
+          }
         }
 
         if (!response.ok) {
@@ -974,100 +924,124 @@
           const rawMsg = errorData.error?.message || response.statusText;
           const formatted = formatGeminiErrorMessage(status, rawMsg);
 
-          if (status === 404) {
-            console.warn(`Model ${cleanModel} returned 404, trying next...`);
-            lastError = new Error(formatted);
-            continue;
+          if ((status === 400 && isApiKeyError(rawMsg)) || status === 403) {
+            const fatal = new Error(formatted);
+            fatal.fatal = true;
+            throw fatal;
           }
 
-          throw new Error(formatted);
+          console.warn(`Model ${cleanModel} returned ${status}, trying next...`, rawMsg);
+          lastError = new Error(formatted);
+          continue;
         }
 
         const resData = await response.json();
-        const text = resData.candidates?.[0]?.content?.parts?.[0]?.text;
+        const parts = resData.candidates?.[0]?.content?.parts || [];
+        const text = parts.filter(p => p.text && !p.thought).map(p => p.text).join('');
+
         if (!text) throw new Error('Gemini APIから応答が得られませんでした。');
 
         try {
           localStorage.setItem(PREFERRED_MODEL_KEY, cleanModel);
         } catch (e) {}
 
-        let cleaned = text.trim();
-        if (cleaned.startsWith('```json')) cleaned = cleaned.substring(7);
-        else if (cleaned.startsWith('```')) cleaned = cleaned.substring(3);
-        if (cleaned.endsWith('```')) cleaned = cleaned.substring(0, cleaned.length - 3);
-        cleaned = cleaned.trim();
-
-        const firstBrace = cleaned.indexOf('{');
-        const lastBrace = cleaned.lastIndexOf('}');
-        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-          cleaned = cleaned.substring(firstBrace, lastBrace + 1);
-        }
-
-        const data = JSON.parse(cleaned);
-        let items = (data.items || []).map(item => {
-          let isFood = item.isFood;
-          let category = item.category || 'その他';
-          if (isFood === undefined) isFood = category !== '日用品' && category !== 'その他';
-          return {
-            name: item.name || '商品',
-            price: Number(item.price) || 0,
-            quantity: Number(item.quantity) || 1,
-            isFood: !!isFood,
-            category,
-            shelfLifeDays: item.shelfLifeDays || 3
-          };
-        });
-
-        const rawTotalAmount = Number(data.totalAmount) || 0;
-        const totalDiscount = Number(data.totalDiscount) || 0;
-        const itemsSum = items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
-
-        // 外税レシート自動検知＆税込自動換算
-        const effectiveTotalBeforeDiscount = rawTotalAmount > 0 ? (rawTotalAmount + totalDiscount) : 0;
-        if (itemsSum > 0 && effectiveTotalBeforeDiscount > 0) {
-          const taxRatio = effectiveTotalBeforeDiscount / itemsSum;
-          // 比率が 1.055 〜 1.13 の範囲にある場合、各品目が税抜で印字されていたと判定
-          if (taxRatio >= 1.055 && taxRatio <= 1.13) {
-            console.log(`[Receipt] 外税レシートを検知（税率比率: ${taxRatio.toFixed(3)}）。品目を税込金額に自動換算します。`);
-            let runningSum = 0;
-            items = items.map(item => {
-              const rate = (taxRatio < 1.09) ? 1.08 : (item.isFood ? 1.08 : 1.10);
-              const taxIncluded = Math.round(item.price * rate);
-              runningSum += taxIncluded * item.quantity;
-              return {
-                ...item,
-                price: taxIncluded
-              };
-            });
-
-            // 最終支払額と端数（1〜2円）のズレがある場合、最後の品目で微調整してピッタリ合致させる
-            const diff = effectiveTotalBeforeDiscount - runningSum;
-            if (Math.abs(diff) <= items.length * 2 && items.length > 0) {
-              items[items.length - 1].price += diff;
-            }
-          }
-        }
-
-        const finalTotalAmount = rawTotalAmount > 0
-          ? rawTotalAmount
-          : Math.max(0, items.reduce((sum, i) => sum + (i.price * i.quantity), 0) - totalDiscount);
-
-        return {
-          store: data.store || '店舗不明',
-          date: data.date || new Date().toISOString().split('T')[0],
-          totalAmount: finalTotalAmount,
-          totalDiscount,
-          items
-        };
+        return cleanAndParseJson(text);
       } catch (err) {
         console.warn(`Model ${cleanModel} failed:`, err);
         lastError = err;
-        if (err.message && (err.message.includes('APIキーが無効') || err.message.includes('400') || err.message.includes('403'))) {
+        if (err.fatal) {
           throw err;
         }
       }
     }
     throw lastError || new Error('レシートの解析に失敗しました。');
+  }
+
+  function cleanAndParseJson(rawText) {
+    let cleaned = rawText.trim();
+    if (cleaned.startsWith('```json')) cleaned = cleaned.substring(7);
+    else if (cleaned.startsWith('```')) cleaned = cleaned.substring(3);
+    if (cleaned.endsWith('```')) cleaned = cleaned.substring(0, cleaned.length - 3);
+    cleaned = cleaned.trim();
+
+    const firstBrace = cleaned.indexOf('{');
+    const lastBrace = cleaned.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+    }
+
+    try {
+      const data = JSON.parse(cleaned);
+      return validateAndFormatReceiptData(data);
+    } catch (err) {
+      console.error('JSON Parse Error:', err, rawText);
+      throw new Error('レシートデータの解析フォーマットが正しくありませんでした。もう一度撮影してください。');
+    }
+  }
+
+  function validateAndFormatReceiptData(data) {
+    if (!data || typeof data !== 'object') {
+      throw new Error('解析結果が無効です。');
+    }
+
+    let items = (data.items || []).map(item => {
+      let isFood = item.isFood;
+      let category = item.category || 'その他';
+      let shelfLife = item.shelfLifeDays;
+
+      if (isFood === undefined) {
+        isFood = category !== '日用品' && category !== 'その他';
+      }
+
+      return {
+        name: item.name || '商品',
+        price: Number(item.price) || 0,
+        quantity: Number(item.quantity) || 1,
+        isFood: !!isFood,
+        category,
+        shelfLifeDays: shelfLife || 3
+      };
+    });
+
+    const rawTotalAmount = Number(data.totalAmount) || 0;
+    const totalDiscount = Number(data.totalDiscount) || 0;
+    const itemsSum = items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+
+    // 外税レシート自動検知＆税込自動換算
+    const effectiveTotalBeforeDiscount = rawTotalAmount > 0 ? (rawTotalAmount + totalDiscount) : 0;
+    if (itemsSum > 0 && effectiveTotalBeforeDiscount > 0) {
+      const taxRatio = effectiveTotalBeforeDiscount / itemsSum;
+      if (taxRatio >= 1.055 && taxRatio <= 1.13) {
+        console.log(`[Receipt] 外税レシートを検知（税率比率: ${taxRatio.toFixed(3)}）。品目を税込金額に自動換算します。`);
+        let runningSum = 0;
+        items = items.map(item => {
+          const rate = (taxRatio < 1.09) ? 1.08 : (item.isFood ? 1.08 : 1.10);
+          const taxIncluded = Math.round(item.price * rate);
+          runningSum += taxIncluded * item.quantity;
+          return {
+            ...item,
+            price: taxIncluded
+          };
+        });
+
+        const diff = effectiveTotalBeforeDiscount - runningSum;
+        if (Math.abs(diff) <= items.length * 2 && items.length > 0) {
+          items[items.length - 1].price += diff;
+        }
+      }
+    }
+
+    const finalTotalAmount = rawTotalAmount > 0 
+      ? rawTotalAmount 
+      : Math.max(0, items.reduce((sum, i) => sum + (i.price * i.quantity), 0) - totalDiscount);
+
+    return {
+      store: data.store || '店舗不明',
+      date: data.date || new Date().toISOString().split('T')[0],
+      totalAmount: finalTotalAmount,
+      totalDiscount,
+      items
+    };
   }
 
   const DEMO_RECEIPTS = [

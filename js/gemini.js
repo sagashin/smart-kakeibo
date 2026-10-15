@@ -38,99 +38,48 @@ const SYSTEM_PROMPT = `
 純粋なJSON文字列のみを出力してください（説明文や余分なテキストは不要）。
 `;
 
-// フォールバック用の標準Geminiモデル一覧（実在する高精度＆安定稼働モデル）
-export const FALLBACK_MODELS = [
-  'gemini-1.5-flash',
-  'gemini-1.5-flash-latest',
-  'gemini-2.0-flash',
-  'gemini-2.0-flash-exp',
-  'gemini-2.5-flash',
-  'gemini-2.5-flash-lite',
-  'gemini-1.5-pro',
-  'gemini-1.5-pro-latest'
+// 利用するGeminiモデル（Gemini 3系・推奨順）
+// ※ Gemini 2.5系は過去利用者限定、1.5/2.0系は提供終了のため使用しない
+export const CANDIDATE_MODELS = [
+  'gemini-3.8-flash',
+  'gemini-3.5-flash',
+  'gemini-3.6-flash',
+  'gemini-3.5-flash-lite'
 ];
 
-const PREFERRED_MODEL_KEY = 'smart_kakeibo_preferred_model';
-const DETECTED_MODELS_KEY = 'smart_kakeibo_detected_models';
+// モデルごとの思考レベル（Gemini 3 は thinkingBudget ではなく thinkingLevel を使用）
+// レシートOCRは深い推論が不要なため、各モデルで選べる最も軽いレベルを指定して高速化
+const THINKING_LEVELS = {
+  'gemini-3.8-flash': 'low',
+  'gemini-3.5-flash': 'minimal',
+  'gemini-3.6-flash': 'minimal',
+  'gemini-3.5-flash-lite': 'minimal'
+};
 
-/**
- * ユーザーのAPIキーで実際に利用可能なモデル一覧をGoogle APIから直接取得
- */
-export async function fetchAvailableGeminiModels(rawApiKey) {
-  const apiKey = sanitizeApiKey(rawApiKey);
-  if (!apiKey) return [];
-
-  try {
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
-    const res = await fetch(endpoint);
-    if (!res.ok) {
-      console.warn(`ListModels failed with status ${res.status}`);
-      return [];
-    }
-    const data = await res.json();
-    const models = (data.models || [])
-      .filter(m => m.supportedGenerationMethods?.includes('generateContent'))
-      .map(m => m.name.replace(/^models\//, ''));
-
-    if (models.length > 0) {
-      try {
-        sessionStorage.setItem(DETECTED_MODELS_KEY, JSON.stringify(models));
-      } catch (e) {}
-    }
-    return models;
-  } catch (err) {
-    console.warn('Failed to fetch available models:', err);
-    return [];
-  }
+function buildThinkingConfig(modelName) {
+  const level = THINKING_LEVELS[modelName];
+  return level ? { thinkingLevel: level } : undefined;
 }
 
+const PREFERRED_MODEL_KEY = 'smart_kakeibo_preferred_model';
+
 /**
- * 試行するモデルの優先順序リストを動的生成（実在するモデルのみを厳選）
+ * 試行するモデルの順序（前回成功したモデルを先頭に）
  */
-export async function getOrderedCandidateModels(rawApiKey) {
-  const apiKey = sanitizeApiKey(rawApiKey);
-  let available = [];
-
+export function getOrderedCandidateModels() {
   try {
-    const cached = sessionStorage.getItem(DETECTED_MODELS_KEY);
-    if (cached) available = JSON.parse(cached);
+    const preferred = localStorage.getItem(PREFERRED_MODEL_KEY);
+    if (preferred && CANDIDATE_MODELS.includes(preferred)) {
+      return [preferred, ...CANDIDATE_MODELS.filter(m => m !== preferred)];
+    }
+    // 以前の誤った設定で保存された古いモデル名は破棄
+    if (preferred) localStorage.removeItem(PREFERRED_MODEL_KEY);
   } catch (e) {}
+  return [...CANDIDATE_MODELS];
+}
 
-  if (!available || available.length === 0) {
-    available = await fetchAvailableGeminiModels(apiKey);
-  }
-
-  // 以前成功した実績のあるモデル
-  let preferred = null;
-  try {
-    preferred = localStorage.getItem(PREFERRED_MODEL_KEY);
-  } catch (e) {}
-
-  // 優先度ソート（高速・低コスト・高精度なFlash系を最優先）
-  const priorityRank = (name) => {
-    if (name === preferred) return 0;
-    if (name === 'gemini-1.5-flash') return 1;
-    if (name === 'gemini-1.5-flash-latest') return 2;
-    if (name === 'gemini-2.0-flash') return 3;
-    if (name === 'gemini-2.5-flash') return 4;
-    if (name === 'gemini-2.5-flash-lite') return 5;
-    if (name.includes('1.5-flash')) return 6;
-    if (name.includes('2.0-flash')) return 7;
-    if (name.includes('flash')) return 10;
-    if (name.includes('pro')) return 20;
-    return 30;
-  };
-
-  if (available && available.length > 0) {
-    const sorted = [...available].sort((a, b) => priorityRank(a) - priorityRank(b));
-    return sorted;
-  }
-
-  // ListModelsが取得できなかった場合のフォールバックリスト
-  if (preferred && FALLBACK_MODELS.includes(preferred)) {
-    return [preferred, ...FALLBACK_MODELS.filter(m => m !== preferred)];
-  }
-  return [...FALLBACK_MODELS];
+function isApiKeyError(rawMessage = '') {
+  return /API key not valid|API_KEY_INVALID|API key expired/i.test(rawMessage);
 }
 
 /**
@@ -148,7 +97,10 @@ export function sanitizeApiKey(key) {
  */
 export function formatGeminiErrorMessage(status, rawMessage = '') {
   if (status === 400) {
-    return 'APIキーが無効、またはリクエスト形式が不正です。APIキーを再確認してください。';
+    if (isApiKeyError(rawMessage)) {
+      return 'APIキーが無効です。Google AI Studioで発行したキーを再確認してください。';
+    }
+    return `リクエストエラー(400): ${rawMessage || '不明なエラー'}`;
   }
   if (status === 403) {
     return 'アクセス権限がありません(403)。APIキーの利用制限やGoogle AI Studioの設定を確認してください。';
@@ -189,7 +141,7 @@ export async function testGeminiApiKey(rawApiKey) {
         },
         body: JSON.stringify({
           contents: [{ parts: [{ text: 'ping' }] }],
-          generationConfig: { maxOutputTokens: 5 }
+          generationConfig: { thinkingConfig: buildThinkingConfig(cleanModel) }
         })
       });
 
@@ -198,7 +150,7 @@ export async function testGeminiApiKey(rawApiKey) {
         const status = response.status;
         const msg = errorData.error?.message || response.statusText;
 
-        if (status === 404) {
+        if (status === 404 || (status === 400 && !isApiKeyError(msg))) {
           lastError = new Error(`モデル ${cleanModel} は利用できません (${msg})`);
           continue;
         }
@@ -216,7 +168,7 @@ export async function testGeminiApiKey(rawApiKey) {
       return {
         ok: true,
         model: cleanModel,
-        message: `接続成功！利用可能なAIモデル「${cleanModel}」が検出され、正常に通信できました✨`
+        message: `接続成功！AIモデル「${cleanModel}」で正常に通信できました✨`
       };
     } catch (err) {
       lastError = err;
@@ -291,13 +243,11 @@ export async function parseReceiptWithGemini(base64Image, mimeType = 'image/jpeg
           }
         ],
         generationConfig: {
-          temperature: 0.0,
+          // ※ Gemini 3 は temperature を既定値(1.0)のまま使うことが推奨されているため指定しない
           responseMimeType: 'application/json',
           responseSchema,
-          // レシートOCRは思考ステップ不要（thinkingBudget: 0 で即座に出力開始させレイテンシを最小化）
-          thinkingConfig: {
-            thinkingBudget: 0
-          }
+          // 思考レベルを最小にして高速化（Gemini 3 は thinkingLevel。thinkingBudget は 2.5 専用で400エラーの原因になる）
+          thinkingConfig: buildThinkingConfig(cleanModel)
         }
       };
 
@@ -310,19 +260,22 @@ export async function parseReceiptWithGemini(base64Image, mimeType = 'image/jpeg
         body: JSON.stringify(requestBody)
       });
 
-      // thinkingConfig または responseSchema に非対応のモデル等のフォールバック
+      // thinkingConfig または responseSchema に非対応のモデル等のフォールバック（APIキーエラー時は再試行しない）
       if (!response.ok && response.status === 400) {
-        console.warn('Request failed with 400, falling back without thinkingConfig/responseSchema');
-        delete requestBody.generationConfig.thinkingConfig;
-        delete requestBody.generationConfig.responseSchema;
-        response = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': apiKey
-          },
-          body: JSON.stringify(requestBody)
-        });
+        const firstErr = await response.clone().json().catch(() => ({}));
+        if (!isApiKeyError(firstErr.error?.message)) {
+          console.warn(`[${cleanModel}] 400: ${firstErr.error?.message} → thinkingConfig/responseSchema なしで再試行`);
+          delete requestBody.generationConfig.thinkingConfig;
+          delete requestBody.generationConfig.responseSchema;
+          response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': apiKey
+            },
+            body: JSON.stringify(requestBody)
+          });
+        }
       }
 
       if (!response.ok) {
@@ -331,17 +284,23 @@ export async function parseReceiptWithGemini(base64Image, mimeType = 'image/jpeg
         const rawMsg = errorData.error?.message || response.statusText;
         const formatted = formatGeminiErrorMessage(status, rawMsg);
 
-        if (status === 404) {
-          console.warn(`Model ${cleanModel} returned 404, trying next...`);
-          lastError = new Error(formatted);
-          continue;
+        // APIキー無効・権限なしはどのモデルでも同じなので即終了
+        if ((status === 400 && isApiKeyError(rawMsg)) || status === 403) {
+          const fatal = new Error(formatted);
+          fatal.fatal = true;
+          throw fatal;
         }
 
-        throw new Error(formatted);
+        // それ以外（404/400/429/5xx）は次のモデルで再試行
+        console.warn(`Model ${cleanModel} returned ${status}, trying next...`, rawMsg);
+        lastError = new Error(formatted);
+        continue;
       }
 
       const resData = await response.json();
-      const text = resData.candidates?.[0]?.content?.parts?.[0]?.text;
+      // 思考パート等を除いた本文テキストを結合
+      const parts = resData.candidates?.[0]?.content?.parts || [];
+      const text = parts.filter(p => p.text && !p.thought).map(p => p.text).join('');
 
       if (!text) {
         throw new Error('Gemini APIから応答が得られませんでした。');
@@ -356,7 +315,7 @@ export async function parseReceiptWithGemini(base64Image, mimeType = 'image/jpeg
     } catch (err) {
       console.warn(`Model ${cleanModel} failed, trying next...`, err);
       lastError = err;
-      if (err.message && (err.message.includes('APIキーが無効') || err.message.includes('400') || err.message.includes('403'))) {
+      if (err.fatal) {
         throw err;
       }
     }
