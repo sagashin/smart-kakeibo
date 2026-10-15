@@ -1881,6 +1881,15 @@ class AppUI {
     }
   }
 
+  getOffsetDateStr(offsetDays = 0) {
+    const d = new Date();
+    d.setDate(d.getDate() + offsetDays);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
   switchTab(tabName) {
     this.currentTab = tabName;
     document.querySelectorAll('.nav-item').forEach(item => {
@@ -1891,15 +1900,17 @@ class AppUI {
       screen.classList.toggle('active', screen.id === `screen-${tabName}`);
     });
 
-    // タブ切り替え時に再描画が必要な場合
-    if (tabName === 'stats' || tabName === 'home') {
+    // タブ切り替え時に各画面を最新データで再描画
+    if (tabName === 'home') {
+      this.renderHome();
+    } else if (tabName === 'stats') {
       this.renderStats();
-    }
-    if (tabName === 'fridge') {
+    } else if (tabName === 'fridge') {
       this.renderFridge();
-    }
-    if (tabName === 'history') {
+    } else if (tabName === 'history') {
       this.renderHistory();
+    } else if (tabName === 'settings') {
+      this.renderSettings();
     }
 
     if (window.lucide) window.lucide.createIcons();
@@ -2538,6 +2549,7 @@ class AppUI {
 
     this.closeScanModal();
     this.showToast('家計簿に記録しました！支出サマリーに反映されました✨');
+    this.renderAll();
     this.switchTab('home');
   }
 
@@ -2707,6 +2719,7 @@ class AppUI {
 
     document.getElementById('manual-modal').classList.remove('active');
     this.showToast('手入力で記録を保存しました✨');
+    this.renderAll();
     this.switchTab('home');
   }
 
