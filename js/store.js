@@ -16,6 +16,71 @@ const DEFAULT_SETTINGS = {
   saveReceiptPhotos: false // デフォルトOFF: 解析後は写真破棄し家計簿データのみ保存（容量完全ゼロ）
 };
 
+/**
+ * ローカルタイムゾーン基準の今日の日付文字列 (YYYY-MM-DD)
+ */
+export function getLocalDateString(d = new Date()) {
+  const dt = (d instanceof Date && !isNaN(d.getTime())) ? d : new Date();
+  const year = dt.getFullYear();
+  const month = String(dt.getMonth() + 1).padStart(2, '0');
+  const day = String(dt.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * どんな形式の日付（YYYY/MM/DD, YYYY.MM.DD, 和暦, 年省略等）でも
+ * 確実に標準 YYYY-MM-DD 形式に統一・正規化
+ */
+export function normalizeDateStr(rawDate) {
+  if (!rawDate) return getLocalDateString();
+  const str = String(rawDate).trim();
+
+  // YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD
+  const m = str.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (m) {
+    const y = m[1];
+    const mo = String(m[2]).padStart(2, '0');
+    const d = String(m[3]).padStart(2, '0');
+    return `${y}-${mo}-${d}`;
+  }
+
+  // MM-DD or MM/DD (年省略)
+  const mShort = str.match(/^(\d{1,2})[-/.](\d{1,2})$/);
+  if (mShort) {
+    const y = new Date().getFullYear();
+    const mo = String(mShort[1]).padStart(2, '0');
+    const d = String(mShort[2]).padStart(2, '0');
+    return `${y}-${mo}-${d}`;
+  }
+
+  // YYYY年MM月DD日
+  const mJp = str.match(/(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日/);
+  if (mJp) {
+    return `${mJp[1]}-${String(mJp[2]).padStart(2, '0')}-${String(mJp[3]).padStart(2, '0')}`;
+  }
+
+  // Dateパース試行
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime())) {
+    return getLocalDateString(parsed);
+  }
+
+  return getLocalDateString();
+}
+
+/**
+ * 日付から確実に year, month, day を抽出
+ */
+export function parseYearMonth(dateStr) {
+  const normalized = normalizeDateStr(dateStr);
+  const parts = normalized.split('-').map(Number);
+  return {
+    year: parts[0] || new Date().getFullYear(),
+    month: parts[1] || (new Date().getMonth() + 1),
+    day: parts[2] || new Date().getDate()
+  };
+}
+
 export class ReceiptImageDB {
   static DB_NAME = 'SmartKakeiboDB';
   static STORE_NAME = 'receipt_images';
@@ -198,7 +263,7 @@ export class KakeiboStore {
    */
   addTransaction(record, addToFridge = true) {
     const id = 'tx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
-    const totalDiscount = record.totalDiscount || 0;
+    const totalDiscount = Number(record.totalDiscount) || 0;
 
     const items = (record.items || []).map(item => {
       let isFood = item.isFood;
@@ -212,8 +277,8 @@ export class KakeiboStore {
       const qty = Number(item.quantity) || 1;
 
       return {
-        id: 'item_' + Math.random().toString(36).substr(2, 7),
-        name: item.name,
+        id: item.id || ('item_' + Math.random().toString(36).substr(2, 7)),
+        name: item.name || '品目',
         price: Number(item.price) || 0,
         quantity: qty,
         category,
@@ -222,11 +287,19 @@ export class KakeiboStore {
       };
     });
 
+    const itemsSum = items.reduce((sum, i) => sum + ((Number(i.price) || 0) * (Number(i.quantity) || 1)), 0);
+    const explicitTotal = Number(record.totalAmount);
+    const finalTotal = (!isNaN(explicitTotal) && explicitTotal > 0)
+      ? explicitTotal
+      : Math.max(0, itemsSum - totalDiscount);
+
+    const txDate = normalizeDateStr(record.date);
+
     const newTx = {
       id,
-      date: record.date || new Date().toISOString().split('T')[0],
+      date: txDate,
       store: record.store || '店舗未記入',
-      totalAmount: record.totalAmount,
+      totalAmount: finalTotal,
       totalDiscount,
       category: record.category || (items[0] ? items[0].category : 'その他'),
       items,
@@ -275,8 +348,8 @@ export class KakeiboStore {
     if (!tx || !tx.items) return null;
 
     tx.items = tx.items.filter(i => i.id !== itemId);
-    const itemsSum = tx.items.reduce((sum, i) => sum + (i.price * (i.quantity || 1)), 0);
-    tx.totalAmount = Math.max(0, itemsSum - (tx.totalDiscount || 0));
+    const itemsSum = tx.items.reduce((sum, i) => sum + ((Number(i.price) || 0) * (Number(i.quantity) || 1)), 0);
+    tx.totalAmount = Math.max(0, itemsSum - (Number(tx.totalDiscount) || 0));
 
     if (tx.items.length === 0) {
       this.deleteTransaction(txId);
@@ -294,7 +367,7 @@ export class KakeiboStore {
     const tx = this.transactions.find(t => t.id === id);
     if (!tx) return null;
 
-    if (updatedData.date) tx.date = updatedData.date;
+    if (updatedData.date) tx.date = normalizeDateStr(updatedData.date);
     if (updatedData.store) tx.store = updatedData.store;
     if (updatedData.memo !== undefined) tx.memo = updatedData.memo;
     if (updatedData.totalDiscount !== undefined) tx.totalDiscount = Number(updatedData.totalDiscount) || 0;
@@ -318,8 +391,15 @@ export class KakeiboStore {
     }
 
     // 合計金額を再計算
-    const itemsSum = (tx.items || []).reduce((sum, i) => sum + (i.price * (i.quantity || 1)), 0);
-    tx.totalAmount = Math.max(0, itemsSum - (tx.totalDiscount || 0));
+    const itemsSum = (tx.items || []).reduce((sum, i) => sum + ((Number(i.price) || 0) * (Number(i.quantity) || 1)), 0);
+    const explicitTotal = Number(updatedData.totalAmount);
+
+    if (!isNaN(explicitTotal) && explicitTotal > 0) {
+      tx.totalAmount = explicitTotal;
+    } else {
+      tx.totalAmount = Math.max(0, itemsSum - (Number(tx.totalDiscount) || 0));
+    }
+
     if (tx.items && tx.items[0]) {
       tx.category = tx.items[0].category;
     }
@@ -365,27 +445,27 @@ export class KakeiboStore {
 
   // --- 統計・分析集計ロジック (日別・月別・累計) ---
   getStats(period = 'monthly', targetDate = new Date()) {
-    const now = new Date(targetDate);
+    const now = (targetDate instanceof Date && !isNaN(targetDate.getTime())) ? targetDate : new Date();
     const targetYear = now.getFullYear();
     const targetMonth = now.getMonth() + 1; // 1-12
-    const targetDateStr = now.toISOString().split('T')[0];
+    const targetDateStr = getLocalDateString(now);
 
     let filtered = [];
 
     if (period === 'daily') {
-      filtered = this.transactions.filter(t => t.date === targetDateStr);
+      filtered = this.transactions.filter(t => normalizeDateStr(t.date) === targetDateStr);
     } else if (period === 'monthly') {
       filtered = this.transactions.filter(t => {
-        const [y, m] = t.date.split('-').map(Number);
-        return y === targetYear && m === targetMonth;
+        const { year, month } = parseYearMonth(t.date);
+        return year === targetYear && month === targetMonth;
       });
     } else {
       // 累計 (all)
       filtered = [...this.transactions];
     }
 
-    const totalExpense = filtered.reduce((sum, t) => sum + t.totalAmount, 0);
-    const totalDiscount = filtered.reduce((sum, t) => sum + (t.totalDiscount || 0), 0);
+    const totalExpense = filtered.reduce((sum, t) => sum + (Number(t.totalAmount) || 0), 0);
+    const totalDiscount = filtered.reduce((sum, t) => sum + (Number(t.totalDiscount) || 0), 0);
     const transactionCount = filtered.length;
     const avgSpendPerShop = transactionCount > 0 ? Math.round(totalExpense / transactionCount) : 0;
 
@@ -396,15 +476,16 @@ export class KakeiboStore {
 
     filtered.forEach(t => {
       const storeName = t.store || '店舗未記入';
+      const tAmount = Number(t.totalAmount) || 0;
       if (!storeTotals[storeName]) {
         storeTotals[storeName] = { amount: 0, count: 0 };
       }
-      storeTotals[storeName].amount += t.totalAmount;
+      storeTotals[storeName].amount += tAmount;
       storeTotals[storeName].count += 1;
 
       (t.items || []).forEach(item => {
         const cat = item.category || 'その他';
-        const cost = (item.price || 0) * (item.quantity || 1);
+        const cost = (Number(item.price) || 0) * (Number(item.quantity) || 1);
         categoryTotals[cat] = (categoryTotals[cat] || 0) + cost;
       });
     });
@@ -428,20 +509,20 @@ export class KakeiboStore {
       for (let day = 1; day <= daysInMonth; day++) {
         const dStr = `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         timelineLabels.push(`${day}日`);
-        const dayTxs = filtered.filter(t => t.date === dStr);
-        timelineExpenses.push(dayTxs.reduce((sum, t) => sum + t.totalAmount, 0));
+        const dayTxs = filtered.filter(t => normalizeDateStr(t.date) === dStr);
+        timelineExpenses.push(dayTxs.reduce((sum, t) => sum + (Number(t.totalAmount) || 0), 0));
       }
     } else if (period === 'daily') {
       // 直近7日間の日別推移
       for (let i = 6; i >= 0; i--) {
         const d = new Date(now);
         d.setDate(d.getDate() - i);
-        const dStr = d.toISOString().split('T')[0];
+        const dStr = getLocalDateString(d);
         const dayLabel = `${d.getMonth() + 1}/${d.getDate()}`;
         timelineLabels.push(dayLabel);
 
-        const dayTxs = this.transactions.filter(t => t.date === dStr);
-        timelineExpenses.push(dayTxs.reduce((sum, t) => sum + t.totalAmount, 0));
+        const dayTxs = this.transactions.filter(t => normalizeDateStr(t.date) === dStr);
+        timelineExpenses.push(dayTxs.reduce((sum, t) => sum + (Number(t.totalAmount) || 0), 0));
       }
     } else {
       // 累計: 直近6ヶ月の月別推移
@@ -452,10 +533,10 @@ export class KakeiboStore {
         timelineLabels.push(`${m}月`);
 
         const monthTxs = this.transactions.filter(t => {
-          const [ty, tm] = t.date.split('-').map(Number);
+          const { year: ty, month: tm } = parseYearMonth(t.date);
           return ty === y && tm === m;
         });
-        timelineExpenses.push(monthTxs.reduce((sum, t) => sum + t.totalAmount, 0));
+        timelineExpenses.push(monthTxs.reduce((sum, t) => sum + (Number(t.totalAmount) || 0), 0));
       }
     }
 

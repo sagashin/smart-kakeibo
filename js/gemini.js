@@ -415,13 +415,38 @@ function validateAndFormatReceiptData(data) {
     }
   }
 
+  const itemsTotal = items.reduce((sum, i) => sum + ((Number(i.price) || 0) * (Number(i.quantity) || 1)), 0);
   const finalTotalAmount = rawTotalAmount > 0 
     ? rawTotalAmount 
-    : Math.max(0, items.reduce((sum, i) => sum + (i.price * i.quantity), 0) - totalDiscount);
+    : Math.max(0, itemsTotal - totalDiscount);
+
+  // 日付の正規化 (YYYY/MM/DD や 和暦などにも柔軟対応)
+  let normalizedDate = '';
+  if (data.date) {
+    const raw = String(data.date).trim();
+    const m = raw.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+    if (m) {
+      const y = Number(m[1]);
+      const currentYear = new Date().getFullYear();
+      // 極端な年ズレ（2000年以前や未来すぎる年）は今年に補正
+      const validYear = (y >= 2020 && y <= currentYear + 1) ? y : currentYear;
+      normalizedDate = `${validYear}-${String(m[2]).padStart(2, '0')}-${String(m[3]).padStart(2, '0')}`;
+    } else {
+      const mShort = raw.match(/^(\d{1,2})[-/.](\d{1,2})/);
+      if (mShort) {
+        normalizedDate = `${new Date().getFullYear()}-${String(mShort[1]).padStart(2, '0')}-${String(mShort[2]).padStart(2, '0')}`;
+      }
+    }
+  }
+
+  if (!normalizedDate) {
+    const now = new Date();
+    normalizedDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  }
 
   return {
     store: data.store || '店舗不明',
-    date: data.date || new Date().toISOString().split('T')[0],
+    date: normalizedDate,
     totalAmount: finalTotalAmount,
     totalDiscount,
     items

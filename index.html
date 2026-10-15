@@ -474,11 +474,14 @@
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
           <div class="form-group">
-            <label>購入日</label>
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <label for="draft-date">購入日</label>
+              <button type="button" class="btn-link-action" onclick="window.appUI && window.appUI.setDraftDateToday()" style="font-size: 11px; color: var(--color-primary); background: none; border: none; cursor: pointer; padding: 0; font-weight: 600;">今日にする</button>
+            </div>
             <input type="date" id="draft-date" class="form-control">
           </div>
           <div class="form-group">
-            <label>値引き・割引(円)</label>
+            <label for="draft-discount">値引き・割引(円)</label>
             <input type="number" id="draft-discount" class="form-control" value="0">
           </div>
         </div>
@@ -495,9 +498,14 @@
           <div class="section-title" style="margin: 0;">
             <span>品目 &amp; 金額 (税込)</span>
           </div>
-          <button type="button" id="btn-apply-tax-8" class="btn-subtle" style="font-size: 11px; padding: 4px 8px; border-radius: 4px; color: var(--color-primary-dark); background: var(--color-primary-light);" onclick="window.appUI && window.appUI.applyTaxToAllDraftItems(8)" title="外税レシートの品目を一括で税込(8%)に換算">
-            <i data-lucide="percent" style="width: 12px; height: 12px; display: inline;"></i> 税抜品目を税込(8%)に換算
-          </button>
+          <div style="display: flex; gap: 6px;">
+            <button type="button" id="draft-add-item-btn" class="btn-subtle" style="font-size: 11px; padding: 4px 8px; border-radius: 4px;" onclick="window.appUI && window.appUI.addDraftItemRow()">
+              <i data-lucide="plus" style="width: 12px; height: 12px; display: inline;"></i> 品目を追加
+            </button>
+            <button type="button" id="btn-apply-tax-8" class="btn-subtle" style="font-size: 11px; padding: 4px 8px; border-radius: 4px; color: var(--color-primary-dark); background: var(--color-primary-light);" onclick="window.appUI && window.appUI.applyTaxToAllDraftItems(8)" title="外税レシートの品目を一括で税込(8%)に換算">
+              <i data-lucide="percent" style="width: 12px; height: 12px; display: inline;"></i> 税込(8%)
+            </button>
+          </div>
         </div>
 
         <div id="draft-items-list" class="draft-items-container"></div>
@@ -559,24 +567,33 @@
       </div>
 
       <form id="manual-entry-form" class="modal-body">
+        <!-- 手入力リアルタイムサマリーバッジ -->
+        <div class="draft-summary-bar" id="manual-summary-badge" style="margin-bottom: 12px;">
+          <span class="badge-total-price" id="manual-summary-price">合計: ¥0</span>
+          <span class="badge-item-count" id="manual-summary-count"><i data-lucide="shopping-cart"></i> 0 品</span>
+        </div>
+
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
           <div class="form-group">
-            <label>日付</label>
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <label for="manual-date">日付</label>
+              <button type="button" class="btn-link-action" onclick="window.appUI && window.appUI.setManualDateToday()" style="font-size: 11px; color: var(--color-primary); background: none; border: none; cursor: pointer; padding: 0; font-weight: 600;">今日にする</button>
+            </div>
             <input type="date" id="manual-date" class="form-control" required>
           </div>
           <div class="form-group">
-            <label>店舗・場所</label>
+            <label for="manual-store">店舗・場所</label>
             <input type="text" id="manual-store" class="form-control" placeholder="例: セブン、自販機">
           </div>
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
           <div class="form-group">
-            <label>総額(円) ※省略時は品目合算</label>
+            <label for="manual-amount">総額(円) ※省略時は品目合算</label>
             <input type="number" id="manual-amount" class="form-control" placeholder="¥ 0">
           </div>
           <div class="form-group">
-            <label>割引・値引き(円)</label>
+            <label for="manual-discount">割引・値引き(円)</label>
             <input type="number" id="manual-discount" class="form-control" placeholder="0">
           </div>
         </div>
@@ -591,7 +608,7 @@
         <div id="manual-items-container"></div>
 
         <div class="form-group" style="margin-top: 10px;">
-          <label>メモ</label>
+          <label for="manual-memo">メモ</label>
           <input type="text" id="manual-memo" class="form-control" placeholder="例: ランチ、特売日など">
         </div>
 
@@ -631,11 +648,14 @@
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
           <div class="form-group">
-            <label>購入日</label>
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <label for="edit-tx-date">購入日</label>
+              <button type="button" class="btn-link-action" onclick="window.appUI && window.appUI.setEditDateToday()" style="font-size: 11px; color: var(--color-primary); background: none; border: none; cursor: pointer; padding: 0; font-weight: 600;">今日にする</button>
+            </div>
             <input type="date" id="edit-tx-date" class="form-control" required>
           </div>
           <div class="form-group">
-            <label>店舗・場所</label>
+            <label for="edit-tx-store">店舗・場所</label>
             <input type="text" id="edit-tx-store" class="form-control" placeholder="例: セブン、ライフ" required>
           </div>
         </div>
@@ -683,6 +703,6 @@
   <div id="toast-notification" class="toast">記録を保存しました！</div>
 
   <!-- Scripts: self-contained bundle for seamless local file & server execution -->
-  <script src="./js/bundle.js?v=20261015_16"></script>
+  <script src="./js/bundle.js?v=20261015_17"></script>
 </body>
 </html>

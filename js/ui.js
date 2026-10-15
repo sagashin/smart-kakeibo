@@ -1,7 +1,7 @@
 /**
  * UI操作・レンダリング・インタラクションコントローラー
  */
-import { store, ReceiptImageDB } from './store.js';
+import { store, ReceiptImageDB, getLocalDateString, normalizeDateStr } from './store.js';
 import { parseReceiptWithGemini, simulateReceiptScan, testGeminiApiKey, sanitizeApiKey, DEMO_RECEIPTS } from './gemini.js';
 import { renderCharts } from './charts.js';
 
@@ -796,8 +796,56 @@ export class AppUI {
     this.renderDraftItems(false);
   }
 
-  removeDraftItem(idx) {
+  setDraftDateToday() {
+    const el = document.getElementById('draft-date');
+    if (el) {
+      el.value = getLocalDateString();
+      if (this.scannedDraft) this.scannedDraft.date = el.value;
+      this.showToast('購入日を本日の日付に設定しました📅');
+    }
+  }
+
+  setManualDateToday() {
+    const el = document.getElementById('manual-date');
+    if (el) {
+      el.value = getLocalDateString();
+      this.showToast('日付を本日に設定しました📅');
+    }
+  }
+
+  setEditDateToday() {
+    const el = document.getElementById('edit-tx-date');
+    if (el) {
+      el.value = getLocalDateString();
+      this.showToast('購入日を本日に設定しました📅（今月の集計に反映されます）');
+    }
+  }
+
+  addDraftItemRow() {
     if (!this.scannedDraft) return;
+    if (!Array.isArray(this.scannedDraft.items)) {
+      this.scannedDraft.items = [];
+    }
+    this.scannedDraft.items.push({
+      name: '',
+      price: 0,
+      quantity: 1,
+      isFood: true,
+      category: '主食',
+      shelfLifeDays: 3
+    });
+    this.renderDraftItems(true);
+    // 新しく追加した入力行にフォーカス
+    setTimeout(() => {
+      const inputs = document.querySelectorAll('#draft-items-list .item-name');
+      if (inputs.length > 0) {
+        inputs[inputs.length - 1].focus();
+      }
+    }, 50);
+  }
+
+  removeDraftItem(idx) {
+    if (!this.scannedDraft || !this.scannedDraft.items) return;
     this.scannedDraft.items.splice(idx, 1);
     this.renderDraftItems(true);
   }
@@ -806,7 +854,8 @@ export class AppUI {
     if (!this.scannedDraft) return;
 
     const storeName = document.getElementById('draft-store').value.trim() || '店舗未登録';
-    const date = document.getElementById('draft-date').value || new Date().toISOString().split('T')[0];
+    const rawDate = document.getElementById('draft-date').value;
+    const date = normalizeDateStr(rawDate);
     const discount = Number(document.getElementById('draft-discount').value) || 0;
     const totalInput = document.getElementById('draft-total-amount');
     const addToFridge = document.getElementById('draft-add-fridge').checked;
@@ -816,8 +865,12 @@ export class AppUI {
     this.scannedDraft.store = storeName;
     this.scannedDraft.date = date;
     this.scannedDraft.totalDiscount = discount;
-    if (totalInput && totalInput.value) {
-      this.scannedDraft.totalAmount = Number(totalInput.value) || this.scannedDraft.totalAmount;
+
+    if (totalInput && totalInput.value !== '') {
+      const parsedInputTotal = Number(totalInput.value);
+      if (!isNaN(parsedInputTotal)) {
+        this.scannedDraft.totalAmount = parsedInputTotal;
+      }
     }
 
     if (!shouldSavePhoto) {
@@ -842,7 +895,7 @@ export class AppUI {
     const modal = document.getElementById('manual-modal');
     if (!modal) return;
 
-    document.getElementById('manual-date').value = new Date().toISOString().split('T')[0];
+    document.getElementById('manual-date').value = getLocalDateString();
     document.getElementById('manual-store').value = '';
     document.getElementById('manual-amount').value = '';
     document.getElementById('manual-discount').value = '';
@@ -855,7 +908,35 @@ export class AppUI {
       this.addManualItemRow();
     }
 
+    this.updateManualSummary();
     modal.classList.add('active');
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  updateManualSummary() {
+    const container = document.getElementById('manual-items-container');
+    if (!container) return;
+
+    const rows = container.querySelectorAll('.manual-item-row');
+    const discount = Number(document.getElementById('manual-discount')?.value) || 0;
+    let itemsSum = 0;
+
+    rows.forEach(row => {
+      const price = Number(row.querySelector('.input-food-price')?.value) || 0;
+      itemsSum += price;
+    });
+
+    const manualAmountInput = document.getElementById('manual-amount');
+    const explicitAmount = Number(manualAmountInput?.value);
+    const finalAmount = (!isNaN(explicitAmount) && explicitAmount > 0)
+      ? explicitAmount
+      : Math.max(0, itemsSum - discount);
+
+    const priceEl = document.getElementById('manual-summary-price');
+    const countEl = document.getElementById('manual-summary-count');
+
+    if (priceEl) priceEl.textContent = `合計: ¥${finalAmount.toLocaleString()}`;
+    if (countEl) countEl.innerHTML = `<i data-lucide="shopping-cart"></i> ${rows.length} 品`;
     if (window.lucide) window.lucide.createIcons();
   }
 
@@ -870,7 +951,7 @@ export class AppUI {
     div.innerHTML = `
       <div class="manual-row-top">
         <input type="text" class="input-food-name" placeholder="商品名 (例: 牛乳, パン, 洗剤)" value="${this.escapeHtml(name)}">
-        <button type="button" class="btn-icon-subtle text-danger" onclick="document.getElementById('${rowId}').remove()" title="この品目を削除">
+        <button type="button" class="btn-icon-subtle text-danger" onclick="document.getElementById('${rowId}').remove(); window.appUI && window.appUI.updateManualSummary();" title="この品目を削除">
           <i data-lucide="minus-circle"></i>
         </button>
       </div>
@@ -896,6 +977,13 @@ export class AppUI {
     `;
 
     container.appendChild(div);
+
+    const priceInput = div.querySelector('.input-food-price');
+    if (priceInput) {
+      priceInput.addEventListener('input', () => this.updateManualSummary());
+    }
+
+    this.updateManualSummary();
     if (window.lucide) window.lucide.createIcons();
   }
 
@@ -903,12 +991,13 @@ export class AppUI {
     e.preventDefault();
 
     const storeName = document.getElementById('manual-store').value.trim() || '店舗未登録';
-    const date = document.getElementById('manual-date').value || new Date().toISOString().split('T')[0];
+    const rawDate = document.getElementById('manual-date').value;
+    const date = normalizeDateStr(rawDate);
     const discount = Number(document.getElementById('manual-discount').value) || 0;
     const memo = document.getElementById('manual-memo').value.trim();
     const addToFridge = document.getElementById('manual-add-fridge').checked;
 
-    const rows = document.querySelectorAll('.manual-item-row');
+    const rows = document.querySelectorAll('#manual-items-container .manual-item-row');
     const items = [];
 
     rows.forEach(row => {
@@ -931,7 +1020,7 @@ export class AppUI {
     // 総合入力金額
     const totalInputAmount = Number(document.getElementById('manual-amount').value);
     const sumItemPrices = items.reduce((s, i) => s + i.price, 0);
-    const finalAmount = totalInputAmount > 0 ? totalInputAmount : Math.max(0, sumItemPrices - discount);
+    const finalAmount = (totalInputAmount > 0) ? totalInputAmount : Math.max(0, sumItemPrices - discount);
 
     if (items.length === 0 && finalAmount === 0) {
       alert('金額または品目を入力してください。');
@@ -1206,7 +1295,8 @@ export class AppUI {
     const txId = document.getElementById('edit-tx-id').value;
     if (!txId) return;
 
-    const date = document.getElementById('edit-tx-date').value || new Date().toISOString().split('T')[0];
+    const rawDate = document.getElementById('edit-tx-date').value;
+    const date = normalizeDateStr(rawDate);
     const storeName = document.getElementById('edit-tx-store').value.trim() || '店舗未登録';
     const discount = Number(document.getElementById('edit-tx-discount').value) || 0;
     const memo = document.getElementById('edit-tx-memo').value.trim();
@@ -1234,9 +1324,13 @@ export class AppUI {
       return;
     }
 
+    const itemsSum = items.reduce((sum, i) => sum + (Number(i.price) || 0), 0);
+    const finalAmount = Math.max(0, itemsSum - discount);
+
     store.updateTransaction(txId, {
       date,
       store: storeName,
+      totalAmount: finalAmount,
       totalDiscount: discount,
       memo,
       items
