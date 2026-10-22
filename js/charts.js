@@ -3,6 +3,16 @@
  * Chart.jsを活用した高精細・レスポンシブチャート
  */
 
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 let timelineChartInstance = null;
 let expenseBreakdownChartInstance = null;
 
@@ -187,7 +197,7 @@ function renderCategoryList(stats) {
     return;
   }
 
-  const total = stats.totalExpense || 1;
+  const total = entries.reduce((sum, [, amount]) => sum + amount, 0) || 1;
 
   container.innerHTML = entries.map(([cat, amount]) => {
     const color = CATEGORY_COLORS[cat] || '#94A3B8';
@@ -196,7 +206,7 @@ function renderCategoryList(stats) {
       <div class="stats-cat-item">
         <div class="stats-cat-left">
           <span class="stats-cat-badge-dot" style="background-color: ${color};"></span>
-          <span>${cat}</span>
+          <span>${escapeHtml(cat)}</span>
         </div>
         <div class="stats-cat-right">
           <span class="stats-cat-amount">¥${amount.toLocaleString()}</span>
@@ -230,7 +240,7 @@ function renderStoreRanking(stats) {
       <div class="stats-store-item">
         <div class="stats-store-info">
           <span class="stats-store-rank ${rankClass}">${idx + 1}</span>
-          <span class="stats-store-name">${storeName}</span>
+          <span class="stats-store-name">${escapeHtml(storeName)}</span>
           <span class="stats-store-count">(${data.count}回)</span>
         </div>
         <div class="stats-store-amount">¥${data.amount.toLocaleString()}</div>

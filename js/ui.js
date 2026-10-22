@@ -4,6 +4,7 @@
 import { store, ReceiptImageDB, getLocalDateString, normalizeDateStr } from './store.js';
 import { parseReceiptWithGemini, simulateReceiptScan, testGeminiApiKey, sanitizeApiKey, DEMO_RECEIPTS } from './gemini.js';
 import { renderCharts } from './charts.js';
+import { estimateFoodCalories } from './calorie-db.js';
 
 export class AppUI {
   constructor() {
@@ -187,25 +188,14 @@ export class AppUI {
           const result = await testGeminiApiKey(cleanKey);
           if (result.ok) {
             testResultEl.className = 'api-test-result success';
-            testResultEl.innerHTML = `✅ ${result.message}`;
+            testResultEl.textContent = `✅ ${result.message}`;
           } else {
             testResultEl.className = 'api-test-result error';
-            testResultEl.innerHTML = `❌ ${result.message}`;
+            testResultEl.textContent = `❌ ${result.message}`;
           }
         } catch (err) {
           testResultEl.className = 'api-test-result error';
           testResultEl.textContent = `❌ 通信テスト失敗: ${err.message || err}`;
-        }
-      });
-    }
-
-    // データリセットボタン
-    const resetBtn = document.getElementById('reset-data-btn');
-    if (resetBtn) {
-      resetBtn.addEventListener('click', () => {
-        if (confirm('すべての取引履歴をデモデータの初期状態に戻しますか？')) {
-          localStorage.clear();
-          location.reload();
         }
       });
     }
@@ -227,10 +217,7 @@ export class AppUI {
   getOffsetDateStr(offsetDays = 0) {
     const d = new Date();
     d.setDate(d.getDate() + offsetDays);
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    return getLocalDateString(d);
   }
 
   switchTab(tabName) {
@@ -257,12 +244,15 @@ export class AppUI {
     }
 
     if (window.lucide) window.lucide.createIcons();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    const scrollContainer = document.querySelector('.app-content-scroll');
+    if (scrollContainer) scrollContainer.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   renderAll() {
     this.renderHome();
-    this.renderStats();
+    if (this.currentTab === 'stats') {
+      this.renderStats();
+    }
     this.renderFridge();
     this.renderHistory();
     this.renderSettings();
@@ -320,7 +310,7 @@ export class AppUI {
               <div class="top-cat-meta">
                 <span class="top-cat-name">
                   <span class="top-cat-dot" style="background-color: ${color};"></span>
-                  ${cat.name}
+                  ${this.escapeHtml(cat.name)}
                 </span>
                 <span class="top-cat-amount">¥${cat.amount.toLocaleString()} <small style="font-size: 10px; color: var(--text-muted); font-weight: normal;">(${cat.pct}%)</small></span>
               </div>
@@ -351,7 +341,7 @@ export class AppUI {
     // 冷蔵庫アラート（賞味期限が今日・明日）
     const fridgeAlertBox = document.getElementById('home-fridge-alert');
     if (fridgeAlertBox) {
-      const today = new Date().toISOString().split('T')[0];
+      const today = getLocalDateString();
       const urgent = store.fridgeItems.filter(f => !f.isConsumed && f.expiryDate <= this.getOffsetDateStr(2));
       if (urgent.length > 0) {
         fridgeAlertBox.style.display = 'flex';
@@ -359,7 +349,7 @@ export class AppUI {
           <div class="alert-icon"><i data-lucide="alert-triangle"></i></div>
           <div class="alert-content">
             <span class="alert-title">賞味期限が近い食材が ${urgent.length}品 あります</span>
-            <span class="alert-desc">${urgent.map(u => u.name).slice(0, 2).join('、')}${urgent.length > 2 ? ' など' : ''} を早めに使い切りましょう！</span>
+            <span class="alert-desc">${urgent.map(u => this.escapeHtml(u.name)).slice(0, 2).join('、')}${urgent.length > 2 ? ' など' : ''} を早めに使い切りましょう！</span>
           </div>
           <button class="alert-action-btn" onclick="document.querySelector('[data-tab=fridge]').click()">見る</button>
         `;
@@ -419,7 +409,7 @@ export class AppUI {
       return;
     }
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getLocalDateString();
 
     listEl.innerHTML = items.map(item => {
       const isExpired = item.expiryDate < todayStr;
@@ -572,7 +562,6 @@ export class AppUI {
     if (confirm('この記録を削除しますか？')) {
       store.deleteTransaction(id);
       this.showToast('記録を削除しました');
-      this.renderAll();
     }
   }
 
@@ -584,7 +573,51 @@ export class AppUI {
     if (confirm(`「${itemName}」を削除しますか？`)) {
       store.deleteTransactionItem(txId, itemId);
       this.showToast(`「${itemName}」を削除しました`);
-      this.renderAll();
+    }
+  }
+
+  // 消費済みの冷蔵庫ストックを整理
+  clearFridgeConsumed() {
+    const consumed = store.fridgeItems.filter(f => f.isConsumed);
+    if (consumed.length === 0) {
+      this.showToast('消費済みの食材はありません');
+      return;
+    }
+    if (confirm(`消費済みの食材（${consumed.length}件）を冷蔵庫から削除しますか？`)) {
+      store.fridgeItems = store.fridgeItems.filter(f => !f.isConsumed);
+      store.saveFridge();
+      this.showToast('消費済みの食材を整理しました✨');
+    }
+  }
+
+  // 冷蔵庫を全件クリア
+  clearAllFridge() {
+    if (store.fridgeItems.length === 0) {
+      this.showToast('冷蔵庫はすでに空っぽです');
+      return;
+    }
+    if (confirm('冷蔵庫のすべての食材を削除しますか？')) {
+      store.fridgeItems = [];
+      store.saveFridge();
+      this.showToast('冷蔵庫を空にしました');
+    }
+  }
+
+  // 全データ消去
+  clearAllData() {
+    if (confirm('すべての取引履歴と冷蔵庫データを完全に削除しますか？この操作は元に戻せません。')) {
+      store.clearAllData();
+      this.showToast('すべてのデータを消去しました');
+      this.switchTab('home');
+    }
+  }
+
+  // デモデータ読み込み
+  loadDemoData() {
+    if (confirm('デモデータを再読み込みしますか？現在のデータは上書きされます。')) {
+      store.loadDemoData();
+      this.showToast('デモデータを読み込みました✨');
+      this.switchTab('home');
     }
   }
 
@@ -614,7 +647,9 @@ export class AppUI {
       let result;
       if (apiKey) {
         try {
-          result = await parseReceiptWithGemini(base64, 'image/jpeg', apiKey);
+          const mimeMatch = base64.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,/);
+          const mimeType = mimeMatch ? mimeMatch[1] : (file.type || 'image/jpeg');
+          result = await parseReceiptWithGemini(base64, mimeType, apiKey);
         } catch (apiErr) {
           console.warn('Gemini API call failed, falling back to demo scan:', apiErr);
           // API通信失敗時: 写真破棄を避け、デモ認識でフォールバックしてユーザーに通知
@@ -708,7 +743,7 @@ export class AppUI {
     let itemsSum = 0;
 
     container.innerHTML = this.scannedDraft.items.map((item, idx) => {
-      const itemPrice = (item.price || 0) * (item.quantity || 1);
+      const itemPrice = Number(item.price) || 0;
       itemsSum += itemPrice;
 
       return `
@@ -734,6 +769,7 @@ export class AppUI {
                 <option value="惣菜・お弁当" ${item.category === '惣菜・お弁当' ? 'selected' : ''}>惣菜・弁当</option>
                 <option value="お菓子・スイーツ" ${item.category === 'お菓子・スイーツ' ? 'selected' : ''}>お菓子</option>
                 <option value="日用品" ${item.category === '日用品' ? 'selected' : ''}>日用品</option>
+                <option value="外食" ${item.category === '外食' ? 'selected' : ''}>外食</option>
                 <option value="その他" ${item.category === 'その他' ? 'selected' : ''}>その他</option>
               </select>
             </div>
@@ -799,6 +835,16 @@ export class AppUI {
       item[field] = Number(value) || 0;
     } else if (field === 'name') {
       item.name = value;
+      const estimated = estimateFoodCalories(value);
+      if (estimated && estimated.isFood) {
+        item.shelfLifeDays = estimated.shelfLifeDays || 3;
+        item.isFood = true;
+        if (estimated.category) {
+          item.category = estimated.category;
+        }
+      } else {
+        item.shelfLifeDays = item.shelfLifeDays || 3;
+      }
     } else if (field === 'category') {
       item.category = value;
       item.isFood = value !== '日用品' && value !== 'その他';
@@ -892,7 +938,6 @@ export class AppUI {
 
     this.closeScanModal();
     this.showToast('家計簿に記録しました！支出サマリーに反映されました✨');
-    this.renderAll();
     this.switchTab('home');
   }
 
@@ -982,6 +1027,7 @@ export class AppUI {
             <option value="惣菜・お弁当" ${category === '惣菜・お弁当' ? 'selected' : ''}>惣菜・弁当</option>
             <option value="お菓子・スイーツ" ${category === 'お菓子・スイーツ' ? 'selected' : ''}>お菓子</option>
             <option value="日用品" ${category === '日用品' ? 'selected' : ''}>日用品</option>
+            <option value="外食" ${category === '外食' ? 'selected' : ''}>外食</option>
             <option value="その他" ${category === 'その他' ? 'selected' : ''}>その他</option>
           </select>
         </div>
@@ -989,6 +1035,20 @@ export class AppUI {
     `;
 
     container.appendChild(div);
+
+    const nameInput = div.querySelector('.input-food-name');
+    const catSelect = div.querySelector('.input-food-cat');
+    if (nameInput && catSelect) {
+      nameInput.addEventListener('change', () => {
+        const val = nameInput.value.trim();
+        if (val) {
+          const estimated = estimateFoodCalories(val);
+          if (estimated && estimated.isFood && estimated.category) {
+            catSelect.value = estimated.category;
+          }
+        }
+      });
+    }
 
     const priceInput = div.querySelector('.input-food-price');
     if (priceInput) {
@@ -1019,12 +1079,14 @@ export class AppUI {
 
       if (name || price > 0) {
         const isFood = category !== '日用品' && category !== 'その他';
+        const estimated = name ? estimateFoodCalories(name) : null;
+        const shelfLifeDays = (estimated && estimated.isFood && estimated.shelfLifeDays) ? estimated.shelfLifeDays : 3;
         items.push({
           name: name || '支出品目',
           price,
           category,
           isFood,
-          shelfLifeDays: 3
+          shelfLifeDays
         });
       }
     });
@@ -1045,9 +1107,9 @@ export class AppUI {
         name: storeName !== '店舗未登録' ? `${storeName} での買い物` : '買い物',
         price: finalAmount,
         quantity: 1,
-        category: '食費',
-        isFood: true,
-        shelfLifeDays: 3
+        category: 'その他',
+        isFood: false,
+        shelfLifeDays: null
       });
     }
 
@@ -1062,7 +1124,6 @@ export class AppUI {
 
     document.getElementById('manual-modal').classList.remove('active');
     this.showToast('手入力で記録を保存しました✨');
-    this.renderAll();
     this.switchTab('home');
   }
 
@@ -1267,12 +1328,27 @@ export class AppUI {
             <option value="惣菜・お弁当" ${category === '惣菜・お弁当' ? 'selected' : ''}>惣菜・弁当</option>
             <option value="お菓子・スイーツ" ${category === 'お菓子・スイーツ' ? 'selected' : ''}>お菓子</option>
             <option value="日用品" ${category === '日用品' ? 'selected' : ''}>日用品</option>
+            <option value="外食" ${category === '外食' ? 'selected' : ''}>外食</option>
             <option value="その他" ${category === 'その他' ? 'selected' : ''}>その他</option>
           </select>
         </div>
       </div>
     `;
     container.appendChild(div);
+
+    const nameInput = div.querySelector('.input-food-name');
+    const catSelect = div.querySelector('.input-food-cat');
+    if (nameInput && catSelect) {
+      nameInput.addEventListener('change', () => {
+        const val = nameInput.value.trim();
+        if (val) {
+          const estimated = estimateFoodCalories(val);
+          if (estimated && estimated.isFood && estimated.category) {
+            catSelect.value = estimated.category;
+          }
+        }
+      });
+    }
 
     const priceInput = div.querySelector('.input-food-price');
     priceInput.addEventListener('input', () => this.updateEditTxSummary());
@@ -1353,8 +1429,8 @@ export class AppUI {
     if (modal) modal.classList.remove('active');
 
     this.showToast('記録と品目を更新しました✨');
-    this.renderAll();
   }
 }
 
 window.appUI = new AppUI();
+window.appUI.init();

@@ -4,6 +4,8 @@
  * 日本のレシート特有の記号除去・値引き反映・品目・金額・賞味期限を精密抽出
  */
 
+import { getLocalDateString } from './store.js';
+
 const SYSTEM_PROMPT = `
 あなたは日本のレシート読み取り・OCR解析に特化した最高精度のAIアシスタントです。
 提供されたレシート画像から、店舗名・購入日・各品目（商品名・価格・数量・食品判定・カテゴリ・消費目安日数）・値引き額・最終支払合計金額を極めて正確に抽出してください。
@@ -17,7 +19,7 @@ const SYSTEM_PROMPT = `
    - 商品の直下にある「値引」「▲50」「30%引」「半額」などの行は、独立した品目として計上しないでください。
    - 対象商品の金額（price）から値引き分を差し引いた実支払額にするか、レシート全体の「値引き合計（totalDiscount）」に合算してください。
 3. 数量・単価・金額の対応:
-   - 「@158 × 2」のように単価と個数が並んでいる場合、quantityを2、priceをその品目の支払合計額（単価×数量）として正しく対応づけてください。単価を誤って商品名や総額に混同しないでください。
+   - @158 × 2 のように複数個購入している場合は、商品名に （×2） などを補記した上で、quantity は 1 とし、price にはその品目の支払合計額（単価×数量の税込額）を設定してください。
 4. 【最重要】消費税（8%・10%）と外税方式レシートの税込化ルール:
    - 日本のスーパーやドラッグストアの多くは、各品目には「税抜（本体価格）」のみが印字され、末尾に「小計」「消費税等（8%）」「合計（税込）」が記載されています。
    - 家計簿アプリとして正確に記録するため、【各品目の金額（price）は必ず「税込実支払金額」に換算】してください！
@@ -32,7 +34,7 @@ const SYSTEM_PROMPT = `
    - 「ポイント利用」「ポイント付与」「チャージ額」「クレジット売上」「お預り」「釣銭」「登録番号」「店舗電話番号」などは購入品目に含めないでください（※レジ袋は日用品として含めて構いません）。
 6. 食品判定とカテゴリ・消費目安日数（shelfLifeDays）:
    - isFood: 飲食料品なら true、日用品等は false
-   - category: '主食' | 'お肉・魚' | '野菜・果物' | '乳製品・飲料' | '惣菜・お弁当' | 'お菓子・スイーツ' | '日用品' | 'その他'
+   - category: '主食' | 'お肉・魚' | '野菜・果物' | '乳製品・飲料' | '惣菜・お弁当' | 'お菓子・スイーツ' | '日用品' | '外食' | 'その他'
    - shelfLifeDays: 食品の場合の一般的な冷蔵・冷暗所での消費目安日数（刺身: 1, 挽肉: 2, 豚/牛: 3, 葉物野菜: 4, 根菜: 14, 牛乳: 6, 卵: 14, 食パン: 4, 豆腐: 4, 納豆: 10, スナック/乾物: 90）。日用品は null。
 
 純粋なJSON文字列のみを出力してください（説明文や余分なテキストは不要）。
@@ -42,7 +44,6 @@ const SYSTEM_PROMPT = `
 // ※ Gemini 2.5系は過去利用者限定、1.5/2.0系は提供終了のため使用しない
 export const CANDIDATE_MODELS = [
   'gemini-3.8-flash',
-  'gemini-3.5-flash',
   'gemini-3.6-flash',
   'gemini-3.5-flash-lite'
 ];
@@ -51,7 +52,6 @@ export const CANDIDATE_MODELS = [
 // レシートOCRは深い推論が不要なため、各モデルで選べる最も軽いレベルを指定して高速化
 const THINKING_LEVELS = {
   'gemini-3.8-flash': 'low',
-  'gemini-3.5-flash': 'minimal',
   'gemini-3.6-flash': 'minimal',
   'gemini-3.5-flash-lite': 'minimal'
 };
@@ -126,13 +126,13 @@ export async function testGeminiApiKey(rawApiKey) {
     return { ok: false, message: 'APIキーが入力されていません。' };
   }
 
-  const models = await getOrderedCandidateModels(apiKey);
+  const models = getOrderedCandidateModels();
   let lastError = null;
 
   for (const modelName of models) {
     const cleanModel = modelName.replace(/^models\//, '');
     try {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${apiKey}`;
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent`;
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
@@ -191,15 +191,15 @@ export async function parseReceiptWithGemini(base64Image, mimeType = 'image/jpeg
   }
 
   // Base64プレフィックスの除去
-  const cleanBase64 = base64Image.replace(/^data:image\/[a-z]+;base64,/, '');
+  const cleanBase64 = base64Image.replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/, '');
 
   let lastError = null;
-  const models = await getOrderedCandidateModels(apiKey);
+  const models = getOrderedCandidateModels();
 
   for (const modelName of models) {
     const cleanModel = modelName.replace(/^models\//, '');
     try {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${apiKey}`;
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent`;
 
       // 高精度 Structured Output スキーマ
       const responseSchema = {
@@ -218,7 +218,7 @@ export async function parseReceiptWithGemini(base64Image, mimeType = 'image/jpeg
                 price: { type: 'INTEGER', description: '支払金額（税込数値）' },
                 quantity: { type: 'INTEGER', description: '数量' },
                 isFood: { type: 'BOOLEAN', description: '食品・飲料ならtrue、日用品等はfalse' },
-                category: { type: 'STRING', description: '主食/お肉・魚/野菜・果物/乳製品・飲料/惣菜・お弁当/お菓子・スイーツ/日用品/その他' },
+                category: { type: 'STRING', description: '主食/お肉・魚/野菜・果物/乳製品・飲料/惣菜・お弁当/お菓子・スイーツ/日用品/外食/その他' },
                 shelfLifeDays: { type: 'INTEGER', description: '食品の消費目安日数' }
               },
               required: ['name', 'price', 'quantity', 'isFood', 'category']
@@ -373,10 +373,17 @@ function validateAndFormatReceiptData(data) {
       isFood = category !== '日用品' && category !== 'その他';
     }
 
+    // もし AI が単価と quantity(>1) に分けて返した場合は、品目合計額に統合し商品名に個数を明記
+    const rawQty = Number(item.quantity) || 1;
+    const rawPrice = Number(item.price) || 0;
+    const itemName = (rawQty > 1 && !/[×xX*]\s*\d+|\d+\s*[個点袋本パック]/i.test(item.name || ''))
+      ? `${item.name || '商品'} ×${rawQty}`
+      : (item.name || '商品');
+
     return {
-      name: item.name || '商品',
-      price: Number(item.price) || 0,
-      quantity: Number(item.quantity) || 1,
+      name: itemName,
+      price: Math.round(rawPrice * rawQty),
+      quantity: 1,
       isFood: !!isFood,
       category,
       shelfLifeDays: shelfLife || 3
@@ -385,7 +392,7 @@ function validateAndFormatReceiptData(data) {
 
   const rawTotalAmount = Number(data.totalAmount) || 0;
   const totalDiscount = Number(data.totalDiscount) || 0;
-  const itemsSum = items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+  const itemsSum = items.reduce((sum, i) => sum + i.price, 0);
 
   // 外税レシート自動検知＆税込自動換算:
   // レシートの最終支払額 (rawTotalAmount + totalDiscount) と、品目合計 (itemsSum) の比率をチェック
@@ -400,7 +407,7 @@ function validateAndFormatReceiptData(data) {
         // 食品なら8%、日用品なら10%（比率が全体で8%寄りの場合は8%優先）
         const rate = (taxRatio < 1.09) ? 1.08 : (item.isFood ? 1.08 : 1.10);
         const taxIncluded = Math.round(item.price * rate);
-        runningSum += taxIncluded * item.quantity;
+        runningSum += taxIncluded;
         return {
           ...item,
           price: taxIncluded
@@ -415,7 +422,7 @@ function validateAndFormatReceiptData(data) {
     }
   }
 
-  const itemsTotal = items.reduce((sum, i) => sum + ((Number(i.price) || 0) * (Number(i.quantity) || 1)), 0);
+  const itemsTotal = items.reduce((sum, i) => sum + (Number(i.price) || 0), 0);
   const finalTotalAmount = rawTotalAmount > 0 
     ? rawTotalAmount 
     : Math.max(0, itemsTotal - totalDiscount);
@@ -440,8 +447,7 @@ function validateAndFormatReceiptData(data) {
   }
 
   if (!normalizedDate) {
-    const now = new Date();
-    normalizedDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    normalizedDate = getLocalDateString();
   }
 
   return {
@@ -460,7 +466,7 @@ export const DEMO_RECEIPTS = [
   {
     name: 'スーパー（自炊・食材まとめ買い）',
     store: 'オーケーストア 銀座店',
-    date: new Date().toISOString().split('T')[0],
+    date: getLocalDateString(),
     totalDiscount: 310,
     items: [
       { name: '国産 豚ロース生姜焼き用 300g', price: 468, quantity: 1, isFood: true, category: 'お肉・魚', shelfLifeDays: 3 },
@@ -474,7 +480,7 @@ export const DEMO_RECEIPTS = [
   {
     name: 'コンビニ（ランチ・デザート）',
     store: 'ローソン 渋谷駅前店',
-    date: new Date().toISOString().split('T')[0],
+    date: getLocalDateString(),
     totalDiscount: 50,
     items: [
       { name: 'からあげクン レギュラー', price: 248, quantity: 1, isFood: true, category: '惣菜・お弁当', shelfLifeDays: 1 },
@@ -486,10 +492,10 @@ export const DEMO_RECEIPTS = [
   {
     name: 'ドラッグストア（日用品＆健康食品）',
     store: 'ウエルシア薬局',
-    date: new Date().toISOString().split('T')[0],
+    date: getLocalDateString(),
     totalDiscount: 180,
     items: [
-      { name: 'inバー プロテイン ベイクドチョコ', price: 170, quantity: 2, isFood: true, category: 'お菓子・スイーツ', shelfLifeDays: 120 },
+      { name: 'inバー プロテイン ベイクドチョコ ×2', price: 340, quantity: 1, isFood: true, category: 'お菓子・スイーツ', shelfLifeDays: 120 },
       { name: 'トマトジュース食塩無添加 900g', price: 238, quantity: 1, isFood: true, category: '乳製品・飲料', shelfLifeDays: 60 },
       { name: 'バブ 薬用入浴剤 12錠', price: 428, quantity: 1, isFood: false, category: '日用品', shelfLifeDays: null }
     ]
@@ -503,7 +509,7 @@ export async function simulateReceiptScan(demoIndex = 0) {
   await new Promise(resolve => setTimeout(resolve, 1000));
   const preset = DEMO_RECEIPTS[demoIndex % DEMO_RECEIPTS.length];
   const items = preset.items.map(i => ({ ...i }));
-  const totalAmount = items.reduce((sum, i) => sum + (i.price * i.quantity), 0) - preset.totalDiscount;
+  const totalAmount = items.reduce((sum, i) => sum + (Number(i.price) || 0), 0) - preset.totalDiscount;
 
   return {
     store: preset.store,

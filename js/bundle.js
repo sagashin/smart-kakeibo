@@ -1,4 +1,4 @@
-﻿/**
+/**
  * SmartKakeibo - オールインワン・バンドルスクリプト
  * file:// プロトコルおよび http:// プロトコルの両方で 100% 確実に動作するように
  * 依存関係を自己完結させた完全版スクリプトです。
@@ -155,7 +155,6 @@ function estimateFoodCalories(itemName) {
     matchedName: itemName
   };
 }
-
 
   /* ==========================================================================
      2. 家計簿 & 冷蔵庫ストック データストア
@@ -436,26 +435,25 @@ class KakeiboStore {
         isFood = category !== '日用品' && category !== 'その他';
       }
 
-      const qty = Number(item.quantity) || 1;
-
       return {
         id: item.id || ('item_' + Math.random().toString(36).substr(2, 7)),
         name: item.name || '品目',
         price: Number(item.price) || 0,
-        quantity: qty,
+        quantity: 1, // UIと整合性を取るため price を品目支払総額とし quantity は 1 に統一
         category,
         isFood,
         shelfLifeDays: shelfLife || 3
       };
     });
 
-    const itemsSum = items.reduce((sum, i) => sum + ((Number(i.price) || 0) * (Number(i.quantity) || 1)), 0);
+    const itemsSum = items.reduce((sum, i) => sum + (Number(i.price) || 0), 0);
     const explicitTotal = Number(record.totalAmount);
     const finalTotal = (!isNaN(explicitTotal) && explicitTotal > 0)
       ? explicitTotal
       : Math.max(0, itemsSum - totalDiscount);
 
     const txDate = normalizeDateStr(record.date);
+    const hasPhoto = !!(record.receiptImage || record.hasImage);
 
     const newTx = {
       id,
@@ -466,27 +464,40 @@ class KakeiboStore {
       category: record.category || (items[0] ? items[0].category : 'その他'),
       items,
       memo: record.memo || '',
-      hasImage: !!record.hasImage,
-      imageId: record.imageId || null,
+      hasImage: hasPhoto,
+      imageId: hasPhoto ? (record.imageId || id) : null,
       createdAt: new Date().toISOString()
     };
 
-    this.transactions.unshift(newTx);
-    this.saveTransactions();
+    if (record.receiptImage) {
+      ReceiptImageDB.saveImage(id, record.receiptImage);
+    }
 
-    // 食品であれば冷蔵庫ストックに自動追加
+    this.transactions.unshift(newTx);
+
     if (addToFridge) {
-      items.filter(i => i.isFood).forEach(food => {
-        this.addFridgeItem({
+      const foodItems = items.filter(i => i.isFood);
+      foodItems.forEach(food => {
+        this.fridgeItems.unshift({
+          id: 'fridge_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
           name: food.name,
-          category: food.category,
+          category: food.category || 'その他',
           addedDate: newTx.date,
           expiryDate: this.calculateExpiry(newTx.date, food.shelfLifeDays),
+          isConsumed: false,
           transactionId: id
         });
       });
+      if (foodItems.length > 0) {
+        try {
+          localStorage.setItem(STORAGE_KEYS.FRIDGE_STOCK, JSON.stringify(this.fridgeItems));
+        } catch (err) {
+          console.error('Failed to save fridge items:', err);
+        }
+      }
     }
 
+    this.saveTransactions(); // ここで1回だけ notify() する
     return newTx;
   }
 
@@ -499,6 +510,18 @@ class KakeiboStore {
       ReceiptImageDB.deleteImage(target.imageId);
     }
     this.transactions = this.transactions.filter(t => t.id !== id);
+
+    // 紐づく未消費の冷蔵庫ストックも同時に削除
+    const prevFridgeLen = this.fridgeItems.length;
+    this.fridgeItems = this.fridgeItems.filter(f => !(f.transactionId === id && !f.isConsumed));
+    if (this.fridgeItems.length !== prevFridgeLen) {
+      try {
+        localStorage.setItem(STORAGE_KEYS.FRIDGE_STOCK, JSON.stringify(this.fridgeItems));
+      } catch (err) {
+        console.error('Failed to save fridge items on delete transaction:', err);
+      }
+    }
+
     this.saveTransactions();
   }
 
@@ -571,9 +594,9 @@ class KakeiboStore {
   }
 
   calculateExpiry(baseDateStr, days) {
-    const d = new Date(baseDateStr);
-    d.setDate(d.getDate() + (days || 3));
-    return d.toISOString().split('T')[0];
+    const { year, month, day } = parseYearMonth(baseDateStr);
+    const d = new Date(year, month - 1, day + (Number(days) || 3));
+    return getLocalDateString(d);
   }
 
   // --- 冷蔵庫ストック操作 ---
@@ -582,7 +605,7 @@ class KakeiboStore {
       id: 'fridge_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
       name: item.name,
       category: item.category || 'その他',
-      addedDate: item.addedDate || new Date().toISOString().split('T')[0],
+      addedDate: item.addedDate || getLocalDateString(),
       expiryDate: item.expiryDate,
       isConsumed: false,
       transactionId: item.transactionId || null
@@ -647,7 +670,7 @@ class KakeiboStore {
 
       (t.items || []).forEach(item => {
         const cat = item.category || 'その他';
-        const cost = (Number(item.price) || 0) * (Number(item.quantity) || 1);
+        const cost = Number(item.price) || 0;
         categoryTotals[cat] = (categoryTotals[cat] || 0) + cost;
       });
     });
@@ -655,10 +678,11 @@ class KakeiboStore {
     // 主な支出カテゴリ TOP3 の算出
     const catEntries = Object.entries(categoryTotals).filter(([, val]) => val > 0);
     catEntries.sort((a, b) => b[1] - a[1]);
+    const totalCategoryAmount = catEntries.reduce((s, [, val]) => s + val, 0);
     const topCategories = catEntries.slice(0, 3).map(([name, amount]) => ({
       name,
       amount,
-      pct: totalExpense > 0 ? Math.round((amount / totalExpense) * 100) : 0
+      pct: totalCategoryAmount > 0 ? Math.round((amount / totalCategoryAmount) * 100) : 0
     }));
 
     // 日別推移データの作成 (グラフ用)
@@ -727,7 +751,7 @@ class KakeiboStore {
     const formatDate = (offsetDays) => {
       const d = new Date(today);
       d.setDate(d.getDate() - offsetDays);
-      return d.toISOString().split('T')[0];
+      return getLocalDateString(d);
     };
 
     return [
@@ -735,14 +759,14 @@ class KakeiboStore {
         id: 'tx_demo_1',
         date: formatDate(0),
         store: 'ライフ スーパーマーケット',
-        totalAmount: 3420,
+        totalAmount: 3300,
         totalDiscount: 150,
-        category: '食費',
+        category: 'お肉・魚',
         memo: '夕食用の食材買い出し。豚肉がお買い得でした。',
         items: [
           { id: 'it_1', name: '国産 豚ロース生姜焼き用', price: 498, quantity: 1, isFood: true, category: 'お肉・魚', shelfLifeDays: 3 },
           { id: 'it_2', name: '長ネギ 2本入', price: 158, quantity: 1, isFood: true, category: '野菜・果物', shelfLifeDays: 5 },
-          { id: 'it_3', name: 'もやし 1袋', price: 38, quantity: 2, isFood: true, category: '野菜・果物', shelfLifeDays: 2 },
+          { id: 'it_3', name: 'もやし 2袋', price: 76, quantity: 1, isFood: true, category: '野菜・果物', shelfLifeDays: 2 },
           { id: 'it_4', name: '北海道牛乳 1000ml', price: 238, quantity: 1, isFood: true, category: '乳製品・飲料', shelfLifeDays: 6 },
           { id: 'it_5', name: 'こしひかり 5kg', price: 2480, quantity: 1, isFood: true, category: '主食', shelfLifeDays: 90 }
         ]
@@ -781,7 +805,7 @@ class KakeiboStore {
         id: 'tx_demo_4',
         date: formatDate(5),
         store: 'イオン フードスタイル',
-        totalAmount: 4890,
+        totalAmount: 3842,
         totalDiscount: 350,
         category: 'お肉・魚',
         memo: '週末の作り置き用まとめ買い（見切りシールで節約！）',
@@ -793,7 +817,7 @@ class KakeiboStore {
           { id: 'it_18', name: '食パン 6枚切', price: 168, quantity: 1, isFood: true, category: '主食', shelfLifeDays: 4 },
           { id: 'it_19', name: '無糖ヨーグルト 400g', price: 188, quantity: 1, isFood: true, category: '乳製品・飲料', shelfLifeDays: 7 },
           { id: 'it_20', name: 'オリーブオイル 400g', price: 798, quantity: 1, isFood: true, category: 'その他', shelfLifeDays: 365 },
-          { id: 'it_21', name: '納豆 3パック', price: 98, quantity: 2, isFood: true, category: 'お肉・魚', shelfLifeDays: 10 },
+          { id: 'it_21', name: '納豆 3パック×2', price: 196, quantity: 1, isFood: true, category: 'お肉・魚', shelfLifeDays: 10 },
           { id: 'it_22', name: 'ミックスナッツ大袋', price: 980, quantity: 1, isFood: true, category: 'お菓子・スイーツ', shelfLifeDays: 180 },
           { id: 'it_23', name: 'キャベツ 1/2カット', price: 128, quantity: 1, isFood: true, category: '野菜・果物', shelfLifeDays: 5 },
           { id: 'it_24', name: '玉ねぎ 3個ネット', price: 198, quantity: 1, isFood: true, category: '野菜・果物', shelfLifeDays: 14 }
@@ -808,12 +832,12 @@ class KakeiboStore {
     const formatOffset = (days) => {
       const d = new Date(today);
       d.setDate(d.getDate() + days);
-      return d.toISOString().split('T')[0];
+      return getLocalDateString(d);
     };
     const formatPast = (days) => {
       const d = new Date(today);
       d.setDate(d.getDate() - days);
-      return d.toISOString().split('T')[0];
+      return getLocalDateString(d);
     };
 
     return [
@@ -869,8 +893,6 @@ class KakeiboStore {
     localStorage.removeItem('smart_kakeibo_transactions_v1');
     localStorage.removeItem('smart_kakeibo_fridge_v1');
     ReceiptImageDB.clearAll();
-    this.saveTransactions();
-    this.saveFridge();
     this.notify();
   }
 
@@ -878,14 +900,17 @@ class KakeiboStore {
   loadDemoData() {
     this.transactions = this.generateInitialDemoData();
     this.fridgeItems = this.generateInitialFridgeData();
-    this.saveTransactions();
-    this.saveFridge();
+    try {
+      localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(this.transactions));
+      localStorage.setItem(STORAGE_KEYS.FRIDGE_STOCK, JSON.stringify(this.fridgeItems));
+    } catch (err) {
+      console.error('Failed to save demo data:', err);
+    }
     this.notify();
   }
 }
 
 const store = new KakeiboStore();
-
 
   /* ==========================================================================
      3. Gemini API レシート画像解析 & デモスキャナー
@@ -895,6 +920,7 @@ const store = new KakeiboStore();
  * Google Gemini 3.5 Flash / 3.8 Flash / 3.5 Flash-Lite を活用して、
  * 日本のレシート特有の記号除去・値引き反映・品目・金額・賞味期限を精密抽出
  */
+
 
 const SYSTEM_PROMPT = `
 あなたは日本のレシート読み取り・OCR解析に特化した最高精度のAIアシスタントです。
@@ -909,7 +935,7 @@ const SYSTEM_PROMPT = `
    - 商品の直下にある「値引」「▲50」「30%引」「半額」などの行は、独立した品目として計上しないでください。
    - 対象商品の金額（price）から値引き分を差し引いた実支払額にするか、レシート全体の「値引き合計（totalDiscount）」に合算してください。
 3. 数量・単価・金額の対応:
-   - 「@158 × 2」のように単価と個数が並んでいる場合、quantityを2、priceをその品目の支払合計額（単価×数量）として正しく対応づけてください。単価を誤って商品名や総額に混同しないでください。
+   - @158 × 2 のように複数個購入している場合は、商品名に （×2） などを補記した上で、quantity は 1 とし、price にはその品目の支払合計額（単価×数量の税込額）を設定してください。
 4. 【最重要】消費税（8%・10%）と外税方式レシートの税込化ルール:
    - 日本のスーパーやドラッグストアの多くは、各品目には「税抜（本体価格）」のみが印字され、末尾に「小計」「消費税等（8%）」「合計（税込）」が記載されています。
    - 家計簿アプリとして正確に記録するため、【各品目の金額（price）は必ず「税込実支払金額」に換算】してください！
@@ -924,7 +950,7 @@ const SYSTEM_PROMPT = `
    - 「ポイント利用」「ポイント付与」「チャージ額」「クレジット売上」「お預り」「釣銭」「登録番号」「店舗電話番号」などは購入品目に含めないでください（※レジ袋は日用品として含めて構いません）。
 6. 食品判定とカテゴリ・消費目安日数（shelfLifeDays）:
    - isFood: 飲食料品なら true、日用品等は false
-   - category: '主食' | 'お肉・魚' | '野菜・果物' | '乳製品・飲料' | '惣菜・お弁当' | 'お菓子・スイーツ' | '日用品' | 'その他'
+   - category: '主食' | 'お肉・魚' | '野菜・果物' | '乳製品・飲料' | '惣菜・お弁当' | 'お菓子・スイーツ' | '日用品' | '外食' | 'その他'
    - shelfLifeDays: 食品の場合の一般的な冷蔵・冷暗所での消費目安日数（刺身: 1, 挽肉: 2, 豚/牛: 3, 葉物野菜: 4, 根菜: 14, 牛乳: 6, 卵: 14, 食パン: 4, 豆腐: 4, 納豆: 10, スナック/乾物: 90）。日用品は null。
 
 純粋なJSON文字列のみを出力してください（説明文や余分なテキストは不要）。
@@ -934,7 +960,6 @@ const SYSTEM_PROMPT = `
 // ※ Gemini 2.5系は過去利用者限定、1.5/2.0系は提供終了のため使用しない
 const CANDIDATE_MODELS = [
   'gemini-3.8-flash',
-  'gemini-3.5-flash',
   'gemini-3.6-flash',
   'gemini-3.5-flash-lite'
 ];
@@ -943,7 +968,6 @@ const CANDIDATE_MODELS = [
 // レシートOCRは深い推論が不要なため、各モデルで選べる最も軽いレベルを指定して高速化
 const THINKING_LEVELS = {
   'gemini-3.8-flash': 'low',
-  'gemini-3.5-flash': 'minimal',
   'gemini-3.6-flash': 'minimal',
   'gemini-3.5-flash-lite': 'minimal'
 };
@@ -1018,13 +1042,13 @@ async function testGeminiApiKey(rawApiKey) {
     return { ok: false, message: 'APIキーが入力されていません。' };
   }
 
-  const models = await getOrderedCandidateModels(apiKey);
+  const models = getOrderedCandidateModels();
   let lastError = null;
 
   for (const modelName of models) {
     const cleanModel = modelName.replace(/^models\//, '');
     try {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${apiKey}`;
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent`;
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
@@ -1083,15 +1107,15 @@ async function parseReceiptWithGemini(base64Image, mimeType = 'image/jpeg', rawA
   }
 
   // Base64プレフィックスの除去
-  const cleanBase64 = base64Image.replace(/^data:image\/[a-z]+;base64,/, '');
+  const cleanBase64 = base64Image.replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/, '');
 
   let lastError = null;
-  const models = await getOrderedCandidateModels(apiKey);
+  const models = getOrderedCandidateModels();
 
   for (const modelName of models) {
     const cleanModel = modelName.replace(/^models\//, '');
     try {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${apiKey}`;
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent`;
 
       // 高精度 Structured Output スキーマ
       const responseSchema = {
@@ -1110,7 +1134,7 @@ async function parseReceiptWithGemini(base64Image, mimeType = 'image/jpeg', rawA
                 price: { type: 'INTEGER', description: '支払金額（税込数値）' },
                 quantity: { type: 'INTEGER', description: '数量' },
                 isFood: { type: 'BOOLEAN', description: '食品・飲料ならtrue、日用品等はfalse' },
-                category: { type: 'STRING', description: '主食/お肉・魚/野菜・果物/乳製品・飲料/惣菜・お弁当/お菓子・スイーツ/日用品/その他' },
+                category: { type: 'STRING', description: '主食/お肉・魚/野菜・果物/乳製品・飲料/惣菜・お弁当/お菓子・スイーツ/日用品/外食/その他' },
                 shelfLifeDays: { type: 'INTEGER', description: '食品の消費目安日数' }
               },
               required: ['name', 'price', 'quantity', 'isFood', 'category']
@@ -1265,10 +1289,17 @@ function validateAndFormatReceiptData(data) {
       isFood = category !== '日用品' && category !== 'その他';
     }
 
+    // もし AI が単価と quantity(>1) に分けて返した場合は、品目合計額に統合し商品名に個数を明記
+    const rawQty = Number(item.quantity) || 1;
+    const rawPrice = Number(item.price) || 0;
+    const itemName = (rawQty > 1 && !/[×xX*]\s*\d+|\d+\s*[個点袋本パック]/i.test(item.name || ''))
+      ? `${item.name || '商品'} ×${rawQty}`
+      : (item.name || '商品');
+
     return {
-      name: item.name || '商品',
-      price: Number(item.price) || 0,
-      quantity: Number(item.quantity) || 1,
+      name: itemName,
+      price: Math.round(rawPrice * rawQty),
+      quantity: 1,
       isFood: !!isFood,
       category,
       shelfLifeDays: shelfLife || 3
@@ -1277,7 +1308,7 @@ function validateAndFormatReceiptData(data) {
 
   const rawTotalAmount = Number(data.totalAmount) || 0;
   const totalDiscount = Number(data.totalDiscount) || 0;
-  const itemsSum = items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+  const itemsSum = items.reduce((sum, i) => sum + i.price, 0);
 
   // 外税レシート自動検知＆税込自動換算:
   // レシートの最終支払額 (rawTotalAmount + totalDiscount) と、品目合計 (itemsSum) の比率をチェック
@@ -1292,7 +1323,7 @@ function validateAndFormatReceiptData(data) {
         // 食品なら8%、日用品なら10%（比率が全体で8%寄りの場合は8%優先）
         const rate = (taxRatio < 1.09) ? 1.08 : (item.isFood ? 1.08 : 1.10);
         const taxIncluded = Math.round(item.price * rate);
-        runningSum += taxIncluded * item.quantity;
+        runningSum += taxIncluded;
         return {
           ...item,
           price: taxIncluded
@@ -1307,7 +1338,7 @@ function validateAndFormatReceiptData(data) {
     }
   }
 
-  const itemsTotal = items.reduce((sum, i) => sum + ((Number(i.price) || 0) * (Number(i.quantity) || 1)), 0);
+  const itemsTotal = items.reduce((sum, i) => sum + (Number(i.price) || 0), 0);
   const finalTotalAmount = rawTotalAmount > 0 
     ? rawTotalAmount 
     : Math.max(0, itemsTotal - totalDiscount);
@@ -1332,8 +1363,7 @@ function validateAndFormatReceiptData(data) {
   }
 
   if (!normalizedDate) {
-    const now = new Date();
-    normalizedDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    normalizedDate = getLocalDateString();
   }
 
   return {
@@ -1352,7 +1382,7 @@ const DEMO_RECEIPTS = [
   {
     name: 'スーパー（自炊・食材まとめ買い）',
     store: 'オーケーストア 銀座店',
-    date: new Date().toISOString().split('T')[0],
+    date: getLocalDateString(),
     totalDiscount: 310,
     items: [
       { name: '国産 豚ロース生姜焼き用 300g', price: 468, quantity: 1, isFood: true, category: 'お肉・魚', shelfLifeDays: 3 },
@@ -1366,7 +1396,7 @@ const DEMO_RECEIPTS = [
   {
     name: 'コンビニ（ランチ・デザート）',
     store: 'ローソン 渋谷駅前店',
-    date: new Date().toISOString().split('T')[0],
+    date: getLocalDateString(),
     totalDiscount: 50,
     items: [
       { name: 'からあげクン レギュラー', price: 248, quantity: 1, isFood: true, category: '惣菜・お弁当', shelfLifeDays: 1 },
@@ -1378,10 +1408,10 @@ const DEMO_RECEIPTS = [
   {
     name: 'ドラッグストア（日用品＆健康食品）',
     store: 'ウエルシア薬局',
-    date: new Date().toISOString().split('T')[0],
+    date: getLocalDateString(),
     totalDiscount: 180,
     items: [
-      { name: 'inバー プロテイン ベイクドチョコ', price: 170, quantity: 2, isFood: true, category: 'お菓子・スイーツ', shelfLifeDays: 120 },
+      { name: 'inバー プロテイン ベイクドチョコ ×2', price: 340, quantity: 1, isFood: true, category: 'お菓子・スイーツ', shelfLifeDays: 120 },
       { name: 'トマトジュース食塩無添加 900g', price: 238, quantity: 1, isFood: true, category: '乳製品・飲料', shelfLifeDays: 60 },
       { name: 'バブ 薬用入浴剤 12錠', price: 428, quantity: 1, isFood: false, category: '日用品', shelfLifeDays: null }
     ]
@@ -1395,7 +1425,7 @@ async function simulateReceiptScan(demoIndex = 0) {
   await new Promise(resolve => setTimeout(resolve, 1000));
   const preset = DEMO_RECEIPTS[demoIndex % DEMO_RECEIPTS.length];
   const items = preset.items.map(i => ({ ...i }));
-  const totalAmount = items.reduce((sum, i) => sum + (i.price * i.quantity), 0) - preset.totalDiscount;
+  const totalAmount = items.reduce((sum, i) => sum + (Number(i.price) || 0), 0) - preset.totalDiscount;
 
   return {
     store: preset.store,
@@ -1406,7 +1436,6 @@ async function simulateReceiptScan(demoIndex = 0) {
   };
 }
 
-
   /* ==========================================================================
      4. Chart.js グラフ描画モジュール
      ========================================================================== */
@@ -1414,6 +1443,16 @@ async function simulateReceiptScan(demoIndex = 0) {
  * 支出のグラフィカル可視化モジュール
  * Chart.jsを活用した高精細・レスポンシブチャート
  */
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 let timelineChartInstance = null;
 let expenseBreakdownChartInstance = null;
@@ -1599,7 +1638,7 @@ function renderCategoryList(stats) {
     return;
   }
 
-  const total = stats.totalExpense || 1;
+  const total = entries.reduce((sum, [, amount]) => sum + amount, 0) || 1;
 
   container.innerHTML = entries.map(([cat, amount]) => {
     const color = CATEGORY_COLORS[cat] || '#94A3B8';
@@ -1608,7 +1647,7 @@ function renderCategoryList(stats) {
       <div class="stats-cat-item">
         <div class="stats-cat-left">
           <span class="stats-cat-badge-dot" style="background-color: ${color};"></span>
-          <span>${cat}</span>
+          <span>${escapeHtml(cat)}</span>
         </div>
         <div class="stats-cat-right">
           <span class="stats-cat-amount">¥${amount.toLocaleString()}</span>
@@ -1642,7 +1681,7 @@ function renderStoreRanking(stats) {
       <div class="stats-store-item">
         <div class="stats-store-info">
           <span class="stats-store-rank ${rankClass}">${idx + 1}</span>
-          <span class="stats-store-name">${storeName}</span>
+          <span class="stats-store-name">${escapeHtml(storeName)}</span>
           <span class="stats-store-count">(${data.count}回)</span>
         </div>
         <div class="stats-store-amount">¥${data.amount.toLocaleString()}</div>
@@ -1651,16 +1690,12 @@ function renderStoreRanking(stats) {
   }).join('');
 }
 
-
   /* ==========================================================================
      5. UIコントローラー (AppUI)
      ========================================================================== */
 /**
  * UI操作・レンダリング・インタラクションコントローラー
  */
-
-
-
 
 class AppUI {
   constructor() {
@@ -1844,25 +1879,14 @@ class AppUI {
           const result = await testGeminiApiKey(cleanKey);
           if (result.ok) {
             testResultEl.className = 'api-test-result success';
-            testResultEl.innerHTML = `✅ ${result.message}`;
+            testResultEl.textContent = `✅ ${result.message}`;
           } else {
             testResultEl.className = 'api-test-result error';
-            testResultEl.innerHTML = `❌ ${result.message}`;
+            testResultEl.textContent = `❌ ${result.message}`;
           }
         } catch (err) {
           testResultEl.className = 'api-test-result error';
           testResultEl.textContent = `❌ 通信テスト失敗: ${err.message || err}`;
-        }
-      });
-    }
-
-    // データリセットボタン
-    const resetBtn = document.getElementById('reset-data-btn');
-    if (resetBtn) {
-      resetBtn.addEventListener('click', () => {
-        if (confirm('すべての取引履歴をデモデータの初期状態に戻しますか？')) {
-          localStorage.clear();
-          location.reload();
         }
       });
     }
@@ -1884,10 +1908,7 @@ class AppUI {
   getOffsetDateStr(offsetDays = 0) {
     const d = new Date();
     d.setDate(d.getDate() + offsetDays);
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    return getLocalDateString(d);
   }
 
   switchTab(tabName) {
@@ -1914,12 +1935,15 @@ class AppUI {
     }
 
     if (window.lucide) window.lucide.createIcons();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    const scrollContainer = document.querySelector('.app-content-scroll');
+    if (scrollContainer) scrollContainer.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   renderAll() {
     this.renderHome();
-    this.renderStats();
+    if (this.currentTab === 'stats') {
+      this.renderStats();
+    }
     this.renderFridge();
     this.renderHistory();
     this.renderSettings();
@@ -1977,7 +2001,7 @@ class AppUI {
               <div class="top-cat-meta">
                 <span class="top-cat-name">
                   <span class="top-cat-dot" style="background-color: ${color};"></span>
-                  ${cat.name}
+                  ${this.escapeHtml(cat.name)}
                 </span>
                 <span class="top-cat-amount">¥${cat.amount.toLocaleString()} <small style="font-size: 10px; color: var(--text-muted); font-weight: normal;">(${cat.pct}%)</small></span>
               </div>
@@ -2008,7 +2032,7 @@ class AppUI {
     // 冷蔵庫アラート（賞味期限が今日・明日）
     const fridgeAlertBox = document.getElementById('home-fridge-alert');
     if (fridgeAlertBox) {
-      const today = new Date().toISOString().split('T')[0];
+      const today = getLocalDateString();
       const urgent = store.fridgeItems.filter(f => !f.isConsumed && f.expiryDate <= this.getOffsetDateStr(2));
       if (urgent.length > 0) {
         fridgeAlertBox.style.display = 'flex';
@@ -2016,7 +2040,7 @@ class AppUI {
           <div class="alert-icon"><i data-lucide="alert-triangle"></i></div>
           <div class="alert-content">
             <span class="alert-title">賞味期限が近い食材が ${urgent.length}品 あります</span>
-            <span class="alert-desc">${urgent.map(u => u.name).slice(0, 2).join('、')}${urgent.length > 2 ? ' など' : ''} を早めに使い切りましょう！</span>
+            <span class="alert-desc">${urgent.map(u => this.escapeHtml(u.name)).slice(0, 2).join('、')}${urgent.length > 2 ? ' など' : ''} を早めに使い切りましょう！</span>
           </div>
           <button class="alert-action-btn" onclick="document.querySelector('[data-tab=fridge]').click()">見る</button>
         `;
@@ -2076,7 +2100,7 @@ class AppUI {
       return;
     }
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getLocalDateString();
 
     listEl.innerHTML = items.map(item => {
       const isExpired = item.expiryDate < todayStr;
@@ -2229,7 +2253,6 @@ class AppUI {
     if (confirm('この記録を削除しますか？')) {
       store.deleteTransaction(id);
       this.showToast('記録を削除しました');
-      this.renderAll();
     }
   }
 
@@ -2241,7 +2264,51 @@ class AppUI {
     if (confirm(`「${itemName}」を削除しますか？`)) {
       store.deleteTransactionItem(txId, itemId);
       this.showToast(`「${itemName}」を削除しました`);
-      this.renderAll();
+    }
+  }
+
+  // 消費済みの冷蔵庫ストックを整理
+  clearFridgeConsumed() {
+    const consumed = store.fridgeItems.filter(f => f.isConsumed);
+    if (consumed.length === 0) {
+      this.showToast('消費済みの食材はありません');
+      return;
+    }
+    if (confirm(`消費済みの食材（${consumed.length}件）を冷蔵庫から削除しますか？`)) {
+      store.fridgeItems = store.fridgeItems.filter(f => !f.isConsumed);
+      store.saveFridge();
+      this.showToast('消費済みの食材を整理しました✨');
+    }
+  }
+
+  // 冷蔵庫を全件クリア
+  clearAllFridge() {
+    if (store.fridgeItems.length === 0) {
+      this.showToast('冷蔵庫はすでに空っぽです');
+      return;
+    }
+    if (confirm('冷蔵庫のすべての食材を削除しますか？')) {
+      store.fridgeItems = [];
+      store.saveFridge();
+      this.showToast('冷蔵庫を空にしました');
+    }
+  }
+
+  // 全データ消去
+  clearAllData() {
+    if (confirm('すべての取引履歴と冷蔵庫データを完全に削除しますか？この操作は元に戻せません。')) {
+      store.clearAllData();
+      this.showToast('すべてのデータを消去しました');
+      this.switchTab('home');
+    }
+  }
+
+  // デモデータ読み込み
+  loadDemoData() {
+    if (confirm('デモデータを再読み込みしますか？現在のデータは上書きされます。')) {
+      store.loadDemoData();
+      this.showToast('デモデータを読み込みました✨');
+      this.switchTab('home');
     }
   }
 
@@ -2271,7 +2338,9 @@ class AppUI {
       let result;
       if (apiKey) {
         try {
-          result = await parseReceiptWithGemini(base64, 'image/jpeg', apiKey);
+          const mimeMatch = base64.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,/);
+          const mimeType = mimeMatch ? mimeMatch[1] : (file.type || 'image/jpeg');
+          result = await parseReceiptWithGemini(base64, mimeType, apiKey);
         } catch (apiErr) {
           console.warn('Gemini API call failed, falling back to demo scan:', apiErr);
           // API通信失敗時: 写真破棄を避け、デモ認識でフォールバックしてユーザーに通知
@@ -2365,7 +2434,7 @@ class AppUI {
     let itemsSum = 0;
 
     container.innerHTML = this.scannedDraft.items.map((item, idx) => {
-      const itemPrice = (item.price || 0) * (item.quantity || 1);
+      const itemPrice = Number(item.price) || 0;
       itemsSum += itemPrice;
 
       return `
@@ -2391,6 +2460,7 @@ class AppUI {
                 <option value="惣菜・お弁当" ${item.category === '惣菜・お弁当' ? 'selected' : ''}>惣菜・弁当</option>
                 <option value="お菓子・スイーツ" ${item.category === 'お菓子・スイーツ' ? 'selected' : ''}>お菓子</option>
                 <option value="日用品" ${item.category === '日用品' ? 'selected' : ''}>日用品</option>
+                <option value="外食" ${item.category === '外食' ? 'selected' : ''}>外食</option>
                 <option value="その他" ${item.category === 'その他' ? 'selected' : ''}>その他</option>
               </select>
             </div>
@@ -2456,6 +2526,16 @@ class AppUI {
       item[field] = Number(value) || 0;
     } else if (field === 'name') {
       item.name = value;
+      const estimated = estimateFoodCalories(value);
+      if (estimated && estimated.isFood) {
+        item.shelfLifeDays = estimated.shelfLifeDays || 3;
+        item.isFood = true;
+        if (estimated.category) {
+          item.category = estimated.category;
+        }
+      } else {
+        item.shelfLifeDays = item.shelfLifeDays || 3;
+      }
     } else if (field === 'category') {
       item.category = value;
       item.isFood = value !== '日用品' && value !== 'その他';
@@ -2549,7 +2629,6 @@ class AppUI {
 
     this.closeScanModal();
     this.showToast('家計簿に記録しました！支出サマリーに反映されました✨');
-    this.renderAll();
     this.switchTab('home');
   }
 
@@ -2639,6 +2718,7 @@ class AppUI {
             <option value="惣菜・お弁当" ${category === '惣菜・お弁当' ? 'selected' : ''}>惣菜・弁当</option>
             <option value="お菓子・スイーツ" ${category === 'お菓子・スイーツ' ? 'selected' : ''}>お菓子</option>
             <option value="日用品" ${category === '日用品' ? 'selected' : ''}>日用品</option>
+            <option value="外食" ${category === '外食' ? 'selected' : ''}>外食</option>
             <option value="その他" ${category === 'その他' ? 'selected' : ''}>その他</option>
           </select>
         </div>
@@ -2646,6 +2726,20 @@ class AppUI {
     `;
 
     container.appendChild(div);
+
+    const nameInput = div.querySelector('.input-food-name');
+    const catSelect = div.querySelector('.input-food-cat');
+    if (nameInput && catSelect) {
+      nameInput.addEventListener('change', () => {
+        const val = nameInput.value.trim();
+        if (val) {
+          const estimated = estimateFoodCalories(val);
+          if (estimated && estimated.isFood && estimated.category) {
+            catSelect.value = estimated.category;
+          }
+        }
+      });
+    }
 
     const priceInput = div.querySelector('.input-food-price');
     if (priceInput) {
@@ -2676,12 +2770,14 @@ class AppUI {
 
       if (name || price > 0) {
         const isFood = category !== '日用品' && category !== 'その他';
+        const estimated = name ? estimateFoodCalories(name) : null;
+        const shelfLifeDays = (estimated && estimated.isFood && estimated.shelfLifeDays) ? estimated.shelfLifeDays : 3;
         items.push({
           name: name || '支出品目',
           price,
           category,
           isFood,
-          shelfLifeDays: 3
+          shelfLifeDays
         });
       }
     });
@@ -2702,9 +2798,9 @@ class AppUI {
         name: storeName !== '店舗未登録' ? `${storeName} での買い物` : '買い物',
         price: finalAmount,
         quantity: 1,
-        category: '食費',
-        isFood: true,
-        shelfLifeDays: 3
+        category: 'その他',
+        isFood: false,
+        shelfLifeDays: null
       });
     }
 
@@ -2719,7 +2815,6 @@ class AppUI {
 
     document.getElementById('manual-modal').classList.remove('active');
     this.showToast('手入力で記録を保存しました✨');
-    this.renderAll();
     this.switchTab('home');
   }
 
@@ -2924,12 +3019,27 @@ class AppUI {
             <option value="惣菜・お弁当" ${category === '惣菜・お弁当' ? 'selected' : ''}>惣菜・弁当</option>
             <option value="お菓子・スイーツ" ${category === 'お菓子・スイーツ' ? 'selected' : ''}>お菓子</option>
             <option value="日用品" ${category === '日用品' ? 'selected' : ''}>日用品</option>
+            <option value="外食" ${category === '外食' ? 'selected' : ''}>外食</option>
             <option value="その他" ${category === 'その他' ? 'selected' : ''}>その他</option>
           </select>
         </div>
       </div>
     `;
     container.appendChild(div);
+
+    const nameInput = div.querySelector('.input-food-name');
+    const catSelect = div.querySelector('.input-food-cat');
+    if (nameInput && catSelect) {
+      nameInput.addEventListener('change', () => {
+        const val = nameInput.value.trim();
+        if (val) {
+          const estimated = estimateFoodCalories(val);
+          if (estimated && estimated.isFood && estimated.category) {
+            catSelect.value = estimated.category;
+          }
+        }
+      });
+    }
 
     const priceInput = div.querySelector('.input-food-price');
     priceInput.addEventListener('input', () => this.updateEditTxSummary());
@@ -3010,11 +3120,8 @@ class AppUI {
     if (modal) modal.classList.remove('active');
 
     this.showToast('記録と品目を更新しました✨');
-    this.renderAll();
   }
 }
-
-
 
 
   // グローバル関数公開

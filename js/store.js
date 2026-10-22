@@ -274,26 +274,25 @@ export class KakeiboStore {
         isFood = category !== '日用品' && category !== 'その他';
       }
 
-      const qty = Number(item.quantity) || 1;
-
       return {
         id: item.id || ('item_' + Math.random().toString(36).substr(2, 7)),
         name: item.name || '品目',
         price: Number(item.price) || 0,
-        quantity: qty,
+        quantity: 1, // UIと整合性を取るため price を品目支払総額とし quantity は 1 に統一
         category,
         isFood,
         shelfLifeDays: shelfLife || 3
       };
     });
 
-    const itemsSum = items.reduce((sum, i) => sum + ((Number(i.price) || 0) * (Number(i.quantity) || 1)), 0);
+    const itemsSum = items.reduce((sum, i) => sum + (Number(i.price) || 0), 0);
     const explicitTotal = Number(record.totalAmount);
     const finalTotal = (!isNaN(explicitTotal) && explicitTotal > 0)
       ? explicitTotal
       : Math.max(0, itemsSum - totalDiscount);
 
     const txDate = normalizeDateStr(record.date);
+    const hasPhoto = !!(record.receiptImage || record.hasImage);
 
     const newTx = {
       id,
@@ -304,27 +303,40 @@ export class KakeiboStore {
       category: record.category || (items[0] ? items[0].category : 'その他'),
       items,
       memo: record.memo || '',
-      hasImage: !!record.hasImage,
-      imageId: record.imageId || null,
+      hasImage: hasPhoto,
+      imageId: hasPhoto ? (record.imageId || id) : null,
       createdAt: new Date().toISOString()
     };
 
-    this.transactions.unshift(newTx);
-    this.saveTransactions();
+    if (record.receiptImage) {
+      ReceiptImageDB.saveImage(id, record.receiptImage);
+    }
 
-    // 食品であれば冷蔵庫ストックに自動追加
+    this.transactions.unshift(newTx);
+
     if (addToFridge) {
-      items.filter(i => i.isFood).forEach(food => {
-        this.addFridgeItem({
+      const foodItems = items.filter(i => i.isFood);
+      foodItems.forEach(food => {
+        this.fridgeItems.unshift({
+          id: 'fridge_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
           name: food.name,
-          category: food.category,
+          category: food.category || 'その他',
           addedDate: newTx.date,
           expiryDate: this.calculateExpiry(newTx.date, food.shelfLifeDays),
+          isConsumed: false,
           transactionId: id
         });
       });
+      if (foodItems.length > 0) {
+        try {
+          localStorage.setItem(STORAGE_KEYS.FRIDGE_STOCK, JSON.stringify(this.fridgeItems));
+        } catch (err) {
+          console.error('Failed to save fridge items:', err);
+        }
+      }
     }
 
+    this.saveTransactions(); // ここで1回だけ notify() する
     return newTx;
   }
 
@@ -337,6 +349,18 @@ export class KakeiboStore {
       ReceiptImageDB.deleteImage(target.imageId);
     }
     this.transactions = this.transactions.filter(t => t.id !== id);
+
+    // 紐づく未消費の冷蔵庫ストックも同時に削除
+    const prevFridgeLen = this.fridgeItems.length;
+    this.fridgeItems = this.fridgeItems.filter(f => !(f.transactionId === id && !f.isConsumed));
+    if (this.fridgeItems.length !== prevFridgeLen) {
+      try {
+        localStorage.setItem(STORAGE_KEYS.FRIDGE_STOCK, JSON.stringify(this.fridgeItems));
+      } catch (err) {
+        console.error('Failed to save fridge items on delete transaction:', err);
+      }
+    }
+
     this.saveTransactions();
   }
 
@@ -409,9 +433,9 @@ export class KakeiboStore {
   }
 
   calculateExpiry(baseDateStr, days) {
-    const d = new Date(baseDateStr);
-    d.setDate(d.getDate() + (days || 3));
-    return d.toISOString().split('T')[0];
+    const { year, month, day } = parseYearMonth(baseDateStr);
+    const d = new Date(year, month - 1, day + (Number(days) || 3));
+    return getLocalDateString(d);
   }
 
   // --- 冷蔵庫ストック操作 ---
@@ -420,7 +444,7 @@ export class KakeiboStore {
       id: 'fridge_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
       name: item.name,
       category: item.category || 'その他',
-      addedDate: item.addedDate || new Date().toISOString().split('T')[0],
+      addedDate: item.addedDate || getLocalDateString(),
       expiryDate: item.expiryDate,
       isConsumed: false,
       transactionId: item.transactionId || null
@@ -485,7 +509,7 @@ export class KakeiboStore {
 
       (t.items || []).forEach(item => {
         const cat = item.category || 'その他';
-        const cost = (Number(item.price) || 0) * (Number(item.quantity) || 1);
+        const cost = Number(item.price) || 0;
         categoryTotals[cat] = (categoryTotals[cat] || 0) + cost;
       });
     });
@@ -493,10 +517,11 @@ export class KakeiboStore {
     // 主な支出カテゴリ TOP3 の算出
     const catEntries = Object.entries(categoryTotals).filter(([, val]) => val > 0);
     catEntries.sort((a, b) => b[1] - a[1]);
+    const totalCategoryAmount = catEntries.reduce((s, [, val]) => s + val, 0);
     const topCategories = catEntries.slice(0, 3).map(([name, amount]) => ({
       name,
       amount,
-      pct: totalExpense > 0 ? Math.round((amount / totalExpense) * 100) : 0
+      pct: totalCategoryAmount > 0 ? Math.round((amount / totalCategoryAmount) * 100) : 0
     }));
 
     // 日別推移データの作成 (グラフ用)
@@ -565,7 +590,7 @@ export class KakeiboStore {
     const formatDate = (offsetDays) => {
       const d = new Date(today);
       d.setDate(d.getDate() - offsetDays);
-      return d.toISOString().split('T')[0];
+      return getLocalDateString(d);
     };
 
     return [
@@ -573,14 +598,14 @@ export class KakeiboStore {
         id: 'tx_demo_1',
         date: formatDate(0),
         store: 'ライフ スーパーマーケット',
-        totalAmount: 3420,
+        totalAmount: 3300,
         totalDiscount: 150,
-        category: '食費',
+        category: 'お肉・魚',
         memo: '夕食用の食材買い出し。豚肉がお買い得でした。',
         items: [
           { id: 'it_1', name: '国産 豚ロース生姜焼き用', price: 498, quantity: 1, isFood: true, category: 'お肉・魚', shelfLifeDays: 3 },
           { id: 'it_2', name: '長ネギ 2本入', price: 158, quantity: 1, isFood: true, category: '野菜・果物', shelfLifeDays: 5 },
-          { id: 'it_3', name: 'もやし 1袋', price: 38, quantity: 2, isFood: true, category: '野菜・果物', shelfLifeDays: 2 },
+          { id: 'it_3', name: 'もやし 2袋', price: 76, quantity: 1, isFood: true, category: '野菜・果物', shelfLifeDays: 2 },
           { id: 'it_4', name: '北海道牛乳 1000ml', price: 238, quantity: 1, isFood: true, category: '乳製品・飲料', shelfLifeDays: 6 },
           { id: 'it_5', name: 'こしひかり 5kg', price: 2480, quantity: 1, isFood: true, category: '主食', shelfLifeDays: 90 }
         ]
@@ -619,7 +644,7 @@ export class KakeiboStore {
         id: 'tx_demo_4',
         date: formatDate(5),
         store: 'イオン フードスタイル',
-        totalAmount: 4890,
+        totalAmount: 3842,
         totalDiscount: 350,
         category: 'お肉・魚',
         memo: '週末の作り置き用まとめ買い（見切りシールで節約！）',
@@ -631,7 +656,7 @@ export class KakeiboStore {
           { id: 'it_18', name: '食パン 6枚切', price: 168, quantity: 1, isFood: true, category: '主食', shelfLifeDays: 4 },
           { id: 'it_19', name: '無糖ヨーグルト 400g', price: 188, quantity: 1, isFood: true, category: '乳製品・飲料', shelfLifeDays: 7 },
           { id: 'it_20', name: 'オリーブオイル 400g', price: 798, quantity: 1, isFood: true, category: 'その他', shelfLifeDays: 365 },
-          { id: 'it_21', name: '納豆 3パック', price: 98, quantity: 2, isFood: true, category: 'お肉・魚', shelfLifeDays: 10 },
+          { id: 'it_21', name: '納豆 3パック×2', price: 196, quantity: 1, isFood: true, category: 'お肉・魚', shelfLifeDays: 10 },
           { id: 'it_22', name: 'ミックスナッツ大袋', price: 980, quantity: 1, isFood: true, category: 'お菓子・スイーツ', shelfLifeDays: 180 },
           { id: 'it_23', name: 'キャベツ 1/2カット', price: 128, quantity: 1, isFood: true, category: '野菜・果物', shelfLifeDays: 5 },
           { id: 'it_24', name: '玉ねぎ 3個ネット', price: 198, quantity: 1, isFood: true, category: '野菜・果物', shelfLifeDays: 14 }
@@ -646,12 +671,12 @@ export class KakeiboStore {
     const formatOffset = (days) => {
       const d = new Date(today);
       d.setDate(d.getDate() + days);
-      return d.toISOString().split('T')[0];
+      return getLocalDateString(d);
     };
     const formatPast = (days) => {
       const d = new Date(today);
       d.setDate(d.getDate() - days);
-      return d.toISOString().split('T')[0];
+      return getLocalDateString(d);
     };
 
     return [
@@ -707,8 +732,6 @@ export class KakeiboStore {
     localStorage.removeItem('smart_kakeibo_transactions_v1');
     localStorage.removeItem('smart_kakeibo_fridge_v1');
     ReceiptImageDB.clearAll();
-    this.saveTransactions();
-    this.saveFridge();
     this.notify();
   }
 
@@ -716,8 +739,12 @@ export class KakeiboStore {
   loadDemoData() {
     this.transactions = this.generateInitialDemoData();
     this.fridgeItems = this.generateInitialFridgeData();
-    this.saveTransactions();
-    this.saveFridge();
+    try {
+      localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(this.transactions));
+      localStorage.setItem(STORAGE_KEYS.FRIDGE_STOCK, JSON.stringify(this.fridgeItems));
+    } catch (err) {
+      console.error('Failed to save demo data:', err);
+    }
     this.notify();
   }
 }
