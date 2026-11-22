@@ -346,7 +346,7 @@
             <i data-lucide="sparkles" style="color: #10B981; width: 16px; height: 16px;"></i> AI・API連携設定
           </h4>
           <div class="form-group">
-            <label for="cfg-api-key">Google Gemini APIキー (Gemini 3.5 Flash / 3.8 Flash 対応)</label>
+            <label for="cfg-api-key">Google Gemini APIキー (Gemini 3.6 Flash / 3.5 Flash-Lite / 3.8 Flash 対応)</label>
             <div class="input-with-action">
               <input type="password" id="cfg-api-key" class="form-control" placeholder="AIzaSy... (任意)" autocomplete="off">
               <button type="button" class="btn-input-action" id="btn-toggle-cfg-key" title="キーの表示/非表示" aria-label="キーの表示切り替え">
@@ -364,6 +364,18 @@
             <div id="cfg-api-key-test-result" class="api-test-result" style="display: none; margin-top: 8px;"></div>
             <small style="font-size: 11px; color: var(--text-muted); display: block; margin-top: 8px; line-height: 1.5;">
               ※未入力の場合は高機能なデモ解析モードで動作します。<a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" style="color: var(--color-primary); text-decoration: underline; font-weight: 600;">Google AI Studio</a> で無料取得できるAPIキーを設定すると、本物のレシート写真から店舗名・品目・賞味期限を最新AIが自動抽出します。キーはブラウザ内にのみ安全に保管されます。
+            </small>
+          </div>
+
+          <div class="form-group">
+            <label for="cfg-scan-mode">AIレシート解析モード</label>
+            <select id="cfg-scan-mode" class="form-control">
+              <option value="balanced">バランス重視（おすすめ・高速＆高精度 / Gemini 3.6 Flash）</option>
+              <option value="fast">最速モード（待ち時間最小 / Gemini 3.5 Flash-Lite）</option>
+              <option value="accurate">高精度モード（かすれ・複雑なレシート向け / Gemini 3.8 Flash）</option>
+            </select>
+            <small style="font-size: 11px; color: var(--text-muted); display: block; margin-top: 6px; line-height: 1.5;">
+              ※「バランス重視」は思考時間を最小化して高速かつ高精度に読み取ります。さらに速くしたい場合は「最速モード」、印字が薄い・複雑なレシートには「高精度モード」をお試しください。
             </small>
           </div>
 
@@ -703,6 +715,6 @@
   <div id="toast-notification" class="toast">記録を保存しました！</div>
 
   <!-- Scripts: self-contained bundle for seamless local file & server execution -->
-  <script src="./js/bundle.js?v=20261015_18"></script>
+  <script src="./js/bundle.js?v=20261122_01"></script>
 </body>
 </html>

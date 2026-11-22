@@ -139,10 +139,12 @@ export class AppUI {
         document.getElementById('cfg-api-key').value = apiKey;
         const budget = Number(document.getElementById('cfg-budget').value) || 75000;
         const savePhoto = document.getElementById('cfg-save-photo') ? document.getElementById('cfg-save-photo').checked : false;
+        const scanMode = document.getElementById('cfg-scan-mode')?.value || 'balanced';
         store.saveSettings({
           geminiApiKey: apiKey,
           monthlyBudget: budget,
-          saveReceiptPhotos: savePhoto
+          saveReceiptPhotos: savePhoto,
+          scanMode
         });
         this.showToast(apiKey ? '設定を保存しました✨（Gemini AIが有効です）' : '設定を保存しました（デモモードで動作します）');
       });
@@ -185,7 +187,8 @@ export class AppUI {
         testResultEl.innerHTML = '<span class="loading-spinner-inline"></span> Gemini APIに接続テスト中...';
 
         try {
-          const result = await testGeminiApiKey(cleanKey);
+          const scanMode = document.getElementById('cfg-scan-mode')?.value || store.settings.scanMode || 'balanced';
+          const result = await testGeminiApiKey(cleanKey, scanMode);
           if (result.ok) {
             testResultEl.className = 'api-test-result success';
             testResultEl.textContent = `✅ ${result.message}`;
@@ -626,10 +629,12 @@ export class AppUI {
     const apiKeyInput = document.getElementById('cfg-api-key');
     const budgetInput = document.getElementById('cfg-budget');
     const savePhotoInput = document.getElementById('cfg-save-photo');
+    const scanModeSelect = document.getElementById('cfg-scan-mode');
 
     if (apiKeyInput) apiKeyInput.value = store.settings.geminiApiKey || '';
     if (budgetInput) budgetInput.value = store.settings.monthlyBudget || 75000;
     if (savePhotoInput) savePhotoInput.checked = !!store.settings.saveReceiptPhotos;
+    if (scanModeSelect) scanModeSelect.value = store.settings.scanMode || 'balanced';
   }
 
   // --- レシート画像読み取り & 解析処理 ---
@@ -640,8 +645,11 @@ export class AppUI {
     this.showScanningOverlay();
 
     try {
-      // 高速化最適化（最大1600px・品質0.82・コントラスト補正）で文字鮮明度を保ちつつ通信量を80%削減
-      const base64 = await this.compressImage(file, 1600, 0.82) || await this.fileToBase64(file);
+      const scanMode = store.settings.scanMode || 'balanced';
+      // モード別画像最適化（高精度は1600px/0.80、高速・バランスは1280px/0.72で転送・処理時間を短縮）
+      const base64 = scanMode === 'accurate'
+        ? (await this.compressImage(file, 1600, 0.80) || await this.fileToBase64(file))
+        : (await this.compressImage(file, 1280, 0.72) || await this.fileToBase64(file));
       const apiKey = sanitizeApiKey(store.settings.geminiApiKey);
 
       let result;
@@ -649,7 +657,7 @@ export class AppUI {
         try {
           const mimeMatch = base64.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,/);
           const mimeType = mimeMatch ? mimeMatch[1] : (file.type || 'image/jpeg');
-          result = await parseReceiptWithGemini(base64, mimeType, apiKey);
+          result = await parseReceiptWithGemini(base64, mimeType, apiKey, scanMode);
         } catch (apiErr) {
           console.warn('Gemini API call failed, falling back to demo scan:', apiErr);
           // API通信失敗時: 写真破棄を避け、デモ認識でフォールバックしてユーザーに通知
@@ -1138,7 +1146,7 @@ export class AppUI {
     }, duration);
   }
 
-  compressImage(file, maxDimension = 1600, quality = 0.82) {
+  compressImage(file, maxDimension = 1280, quality = 0.72) {
     return new Promise((resolve) => {
       if (!file || !file.type.startsWith('image/')) {
         resolve(null);
@@ -1164,8 +1172,8 @@ export class AppUI {
               }
             }
 
-            // 縦長レシートで横幅が縮みすぎて文字が潰れるのを防ぐ（幅最低750pxを確保）
-            const minShortSide = 750;
+            // 縦長レシートで横幅が縮みすぎて文字が潰れるのを防ぐ（幅最低720pxを確保）
+            const minShortSide = 720;
             if (width < height && width < minShortSide && img.width >= minShortSide) {
               const scale = minShortSide / width;
               width = minShortSide;

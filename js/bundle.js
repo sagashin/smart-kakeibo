@@ -174,7 +174,8 @@ const DEFAULT_SETTINGS = {
   geminiApiKey: '',
   monthlyBudget: 75000,
   useDemoScanner: true,
-  saveReceiptPhotos: false // デフォルトOFF: 解析後は写真破棄し家計簿データのみ保存（容量完全ゼロ）
+  saveReceiptPhotos: false, // デフォルトOFF: 解析後は写真破棄し家計簿データのみ保存（容量完全ゼロ）
+  scanMode: 'balanced' // 'balanced' | 'fast' | 'accurate'
 };
 
 /**
@@ -917,59 +918,47 @@ const store = new KakeiboStore();
      ========================================================================== */
 /**
  * Gemini API 高精度レシート画像解析 & デモスキャナーモジュール
- * Google Gemini 3.5 Flash / 3.8 Flash / 3.5 Flash-Lite を活用して、
+ * Google Gemini 3.6 Flash / 3.5 Flash-Lite / 3.8 Flash を活用して、
  * 日本のレシート特有の記号除去・値引き反映・品目・金額・賞味期限を精密抽出
  */
 
 
 const SYSTEM_PROMPT = `
-あなたは日本のレシート読み取り・OCR解析に特化した最高精度のAIアシスタントです。
-提供されたレシート画像から、店舗名・購入日・各品目（商品名・価格・数量・食品判定・カテゴリ・消費目安日数）・値引き額・最終支払合計金額を極めて正確に抽出してください。
+日本のレシート画像を正確に読み取り、店舗名・購入日・品目・値引き合計・最終支払合計を純粋なJSONのみで出力してください。
 
-【厳格な読み取りルール】
-1. 商品名のクレンジング（記号・税区分の完全除去）:
-   - 軽減税率や税区分を表す記号（「*」「※」「軽」「外」「内」「#」「八」「8%」「10%」「T」など）は、商品名から完全に除去してください。
-   - レシート特有の略称や半角カナは、自然で読みやすい日本語に補正してください。
-     例:「CGCｷﾞｭｳﾆｭｳ」→「CGC 牛乳」、「ｺｸｻﾝﾄﾘﾓﾓ」→「国産鶏もも肉」、「ﾊﾟｽｺ ﾁｮｳｼﾞｭｸ」→「パスコ 超熟」
-2. 値引き・割引行の吸収:
-   - 商品の直下にある「値引」「▲50」「30%引」「半額」などの行は、独立した品目として計上しないでください。
-   - 対象商品の金額（price）から値引き分を差し引いた実支払額にするか、レシート全体の「値引き合計（totalDiscount）」に合算してください。
-3. 数量・単価・金額の対応:
-   - @158 × 2 のように複数個購入している場合は、商品名に （×2） などを補記した上で、quantity は 1 とし、price にはその品目の支払合計額（単価×数量の税込額）を設定してください。
-4. 【最重要】消費税（8%・10%）と外税方式レシートの税込化ルール:
-   - 日本のスーパーやドラッグストアの多くは、各品目には「税抜（本体価格）」のみが印字され、末尾に「小計」「消費税等（8%）」「合計（税込）」が記載されています。
-   - 家計簿アプリとして正確に記録するため、【各品目の金額（price）は必ず「税込実支払金額」に換算】してください！
-     - 飲食料品（isFood: true）の場合: 税抜価格 × 1.08（端数は四捨五入）
-     - 日用品等の場合: 税抜価格 × 1.10（端数は四捨五入）
-     - すでにレシートが税込表示（内税方式やコンビニなど）の場合は、印字されている税込価格をそのまま使用してください。
-   - 【合計金額（totalAmount）の厳格な一致】:
-     - totalAmount はレシート最下部の「お買上合計」「領収金額」「お支払い合計」の【実際の最終支払税込金額】と完全に一致させてください。
-     - 各品目の price × quantity の合計（- totalDiscount）が、この totalAmount とピッタリ一致するように、端数（1〜2円程度）があれば品目の金額で調整してください。
-     - 「小計」「税抜対象額」「お預り額」「釣銭」を合計金額と誤認しないでください。
-5. 除外すべき非商品行:
-   - 「ポイント利用」「ポイント付与」「チャージ額」「クレジット売上」「お預り」「釣銭」「登録番号」「店舗電話番号」などは購入品目に含めないでください（※レジ袋は日用品として含めて構いません）。
-6. 食品判定とカテゴリ・消費目安日数（shelfLifeDays）:
-   - isFood: 飲食料品なら true、日用品等は false
+【ルール】
+1. 商品名: 税区分記号（* ※ 軽 外 内 # 八 8% 10% T等）を除去し、略称・半角カナを自然な日本語に補正（例: CGCｷﾞｭｳﾆｭｳ→CGC 牛乳）。
+2. 値引き吸収: 商品直下の「値引」「▲50」「半額」等は独立品目にせず、該当商品のpriceから差し引くかtotalDiscountへ合算。
+3. 複数個: 「@158 × 2」等は商品名に「（×2）」を補記し、priceにその品目の支払合計額（税込）を設定。
+4. 税込換算と合計一致: 税抜レシートの各品目priceは必ず税込に換算（食品×1.08、日用品等×1.10、四捨五入）。totalAmountはレシート最下部の最終支払税込金額と完全一致させ、品目price合計 - totalDiscount との端数ズレ（1〜2円）は品目金額で微調整。小計・預り・釣銭を合計と誤認しないこと。
+5. 非商品行の除外: ポイント利用/付与、チャージ、預り、釣銭、登録番号、電話番号は除外（レジ袋は日用品可）。
+6. 属性:
+   - isFood: 飲食料品は true、日用品等は false
    - category: '主食' | 'お肉・魚' | '野菜・果物' | '乳製品・飲料' | '惣菜・お弁当' | 'お菓子・スイーツ' | '日用品' | '外食' | 'その他'
-   - shelfLifeDays: 食品の場合の一般的な冷蔵・冷暗所での消費目安日数（刺身: 1, 挽肉: 2, 豚/牛: 3, 葉物野菜: 4, 根菜: 14, 牛乳: 6, 卵: 14, 食パン: 4, 豆腐: 4, 納豆: 10, スナック/乾物: 90）。日用品は null。
-
-純粋なJSON文字列のみを出力してください（説明文や余分なテキストは不要）。
+   - shelfLifeDays: 食品の消費目安日数（刺身1, 挽肉2, 肉3, 葉物4, 根菜14, 牛乳6, 卵14, パン4, 豆腐4, 納豆10, 乾物90）。日用品は null。
 `;
 
-// 利用するGeminiモデル（Gemini 3系・推奨順）
+// 利用するGeminiモデル（Gemini 3系・バランス重視のデフォルト順）
 // ※ Gemini 2.5系は過去利用者限定、1.5/2.0系は提供終了のため使用しない
 const CANDIDATE_MODELS = [
-  'gemini-3.8-flash',
   'gemini-3.6-flash',
-  'gemini-3.5-flash-lite'
+  'gemini-3.5-flash-lite',
+  'gemini-3.8-flash'
 ];
 
+// スキャンモード別の試行モデル順
+const SCAN_MODE_MODELS = {
+  balanced: ['gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.8-flash'],
+  fast: ['gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-3.8-flash'],
+  accurate: ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite']
+};
+
 // モデルごとの思考レベル（Gemini 3 は thinkingBudget ではなく thinkingLevel を使用）
-// レシートOCRは深い推論が不要なため、各モデルで選べる最も軽いレベルを指定して高速化
+// ※ gemini-3.8-flash は minimal 非対応（エラーになる）のため 'low' を維持
 const THINKING_LEVELS = {
-  'gemini-3.8-flash': 'low',
   'gemini-3.6-flash': 'minimal',
-  'gemini-3.5-flash-lite': 'minimal'
+  'gemini-3.5-flash-lite': 'minimal',
+  'gemini-3.8-flash': 'low'
 };
 
 function buildThinkingConfig(modelName) {
@@ -980,18 +969,10 @@ function buildThinkingConfig(modelName) {
 const PREFERRED_MODEL_KEY = 'smart_kakeibo_preferred_model';
 
 /**
- * 試行するモデルの順序（前回成功したモデルを先頭に）
+ * 試行するモデルの順序（設定されたスキャンモードに基づく）
  */
-function getOrderedCandidateModels() {
-  try {
-    const preferred = localStorage.getItem(PREFERRED_MODEL_KEY);
-    if (preferred && CANDIDATE_MODELS.includes(preferred)) {
-      return [preferred, ...CANDIDATE_MODELS.filter(m => m !== preferred)];
-    }
-    // 以前の誤った設定で保存された古いモデル名は破棄
-    if (preferred) localStorage.removeItem(PREFERRED_MODEL_KEY);
-  } catch (e) {}
-  return [...CANDIDATE_MODELS];
+function getOrderedCandidateModels(scanMode = 'balanced') {
+  return [...(SCAN_MODE_MODELS[scanMode] || CANDIDATE_MODELS)];
 }
 
 function isApiKeyError(rawMessage = '') {
@@ -1036,13 +1017,13 @@ function formatGeminiErrorMessage(status, rawMessage = '') {
 /**
  * Gemini APIキーの疎通テスト（利用可能モデル自動検出付き）
  */
-async function testGeminiApiKey(rawApiKey) {
+async function testGeminiApiKey(rawApiKey, scanMode = 'balanced') {
   const apiKey = sanitizeApiKey(rawApiKey);
   if (!apiKey) {
     return { ok: false, message: 'APIキーが入力されていません。' };
   }
 
-  const models = getOrderedCandidateModels();
+  const models = getOrderedCandidateModels(scanMode);
   let lastError = null;
 
   for (const modelName of models) {
@@ -1100,7 +1081,7 @@ async function testGeminiApiKey(rawApiKey) {
 /**
  * レシート画像をGemini APIで高精度解析
  */
-async function parseReceiptWithGemini(base64Image, mimeType = 'image/jpeg', rawApiKey = '') {
+async function parseReceiptWithGemini(base64Image, mimeType = 'image/jpeg', rawApiKey = '', scanMode = 'balanced') {
   const apiKey = sanitizeApiKey(rawApiKey);
   if (!apiKey) {
     throw new Error('Gemini APIキーが設定されていません。設定画面でAPIキーを入力するか、デモモードをご利用ください。');
@@ -1110,14 +1091,14 @@ async function parseReceiptWithGemini(base64Image, mimeType = 'image/jpeg', rawA
   const cleanBase64 = base64Image.replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/, '');
 
   let lastError = null;
-  const models = getOrderedCandidateModels();
+  const models = getOrderedCandidateModels(scanMode);
 
   for (const modelName of models) {
     const cleanModel = modelName.replace(/^models\//, '');
     try {
       const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent`;
 
-      // 高精度 Structured Output スキーマ
+      // 高精度 Structured Output スキーマ（不要フィールドを省いて生成トークン数を削減）
       const responseSchema = {
         type: 'OBJECT',
         properties: {
@@ -1131,13 +1112,12 @@ async function parseReceiptWithGemini(base64Image, mimeType = 'image/jpeg', rawA
               type: 'OBJECT',
               properties: {
                 name: { type: 'STRING', description: '商品名（記号除去・自然な日本語）' },
-                price: { type: 'INTEGER', description: '支払金額（税込数値）' },
-                quantity: { type: 'INTEGER', description: '数量' },
+                price: { type: 'INTEGER', description: '支払合計金額（税込数値）' },
                 isFood: { type: 'BOOLEAN', description: '食品・飲料ならtrue、日用品等はfalse' },
                 category: { type: 'STRING', description: '主食/お肉・魚/野菜・果物/乳製品・飲料/惣菜・お弁当/お菓子・スイーツ/日用品/外食/その他' },
                 shelfLifeDays: { type: 'INTEGER', description: '食品の消費目安日数' }
               },
-              required: ['name', 'price', 'quantity', 'isFood', 'category']
+              required: ['name', 'price', 'isFood', 'category']
             }
           }
         },
@@ -1830,10 +1810,12 @@ class AppUI {
         document.getElementById('cfg-api-key').value = apiKey;
         const budget = Number(document.getElementById('cfg-budget').value) || 75000;
         const savePhoto = document.getElementById('cfg-save-photo') ? document.getElementById('cfg-save-photo').checked : false;
+        const scanMode = document.getElementById('cfg-scan-mode')?.value || 'balanced';
         store.saveSettings({
           geminiApiKey: apiKey,
           monthlyBudget: budget,
-          saveReceiptPhotos: savePhoto
+          saveReceiptPhotos: savePhoto,
+          scanMode
         });
         this.showToast(apiKey ? '設定を保存しました✨（Gemini AIが有効です）' : '設定を保存しました（デモモードで動作します）');
       });
@@ -1876,7 +1858,8 @@ class AppUI {
         testResultEl.innerHTML = '<span class="loading-spinner-inline"></span> Gemini APIに接続テスト中...';
 
         try {
-          const result = await testGeminiApiKey(cleanKey);
+          const scanMode = document.getElementById('cfg-scan-mode')?.value || store.settings.scanMode || 'balanced';
+          const result = await testGeminiApiKey(cleanKey, scanMode);
           if (result.ok) {
             testResultEl.className = 'api-test-result success';
             testResultEl.textContent = `✅ ${result.message}`;
@@ -2317,10 +2300,12 @@ class AppUI {
     const apiKeyInput = document.getElementById('cfg-api-key');
     const budgetInput = document.getElementById('cfg-budget');
     const savePhotoInput = document.getElementById('cfg-save-photo');
+    const scanModeSelect = document.getElementById('cfg-scan-mode');
 
     if (apiKeyInput) apiKeyInput.value = store.settings.geminiApiKey || '';
     if (budgetInput) budgetInput.value = store.settings.monthlyBudget || 75000;
     if (savePhotoInput) savePhotoInput.checked = !!store.settings.saveReceiptPhotos;
+    if (scanModeSelect) scanModeSelect.value = store.settings.scanMode || 'balanced';
   }
 
   // --- レシート画像読み取り & 解析処理 ---
@@ -2331,8 +2316,11 @@ class AppUI {
     this.showScanningOverlay();
 
     try {
-      // 高速化最適化（最大1600px・品質0.82・コントラスト補正）で文字鮮明度を保ちつつ通信量を80%削減
-      const base64 = await this.compressImage(file, 1600, 0.82) || await this.fileToBase64(file);
+      const scanMode = store.settings.scanMode || 'balanced';
+      // モード別画像最適化（高精度は1600px/0.80、高速・バランスは1280px/0.72で転送・処理時間を短縮）
+      const base64 = scanMode === 'accurate'
+        ? (await this.compressImage(file, 1600, 0.80) || await this.fileToBase64(file))
+        : (await this.compressImage(file, 1280, 0.72) || await this.fileToBase64(file));
       const apiKey = sanitizeApiKey(store.settings.geminiApiKey);
 
       let result;
@@ -2340,7 +2328,7 @@ class AppUI {
         try {
           const mimeMatch = base64.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,/);
           const mimeType = mimeMatch ? mimeMatch[1] : (file.type || 'image/jpeg');
-          result = await parseReceiptWithGemini(base64, mimeType, apiKey);
+          result = await parseReceiptWithGemini(base64, mimeType, apiKey, scanMode);
         } catch (apiErr) {
           console.warn('Gemini API call failed, falling back to demo scan:', apiErr);
           // API通信失敗時: 写真破棄を避け、デモ認識でフォールバックしてユーザーに通知
@@ -2829,7 +2817,7 @@ class AppUI {
     }, duration);
   }
 
-  compressImage(file, maxDimension = 1600, quality = 0.82) {
+  compressImage(file, maxDimension = 1280, quality = 0.72) {
     return new Promise((resolve) => {
       if (!file || !file.type.startsWith('image/')) {
         resolve(null);
@@ -2855,8 +2843,8 @@ class AppUI {
               }
             }
 
-            // 縦長レシートで横幅が縮みすぎて文字が潰れるのを防ぐ（幅最低750pxを確保）
-            const minShortSide = 750;
+            // 縦長レシートで横幅が縮みすぎて文字が潰れるのを防ぐ（幅最低720pxを確保）
+            const minShortSide = 720;
             if (width < height && width < minShortSide && img.width >= minShortSide) {
               const scale = minShortSide / width;
               width = minShortSide;

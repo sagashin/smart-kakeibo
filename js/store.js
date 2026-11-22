@@ -13,7 +13,8 @@ const DEFAULT_SETTINGS = {
   geminiApiKey: '',
   monthlyBudget: 75000,
   useDemoScanner: true,
-  saveReceiptPhotos: false // デフォルトOFF: 解析後は写真破棄し家計簿データのみ保存（容量完全ゼロ）
+  saveReceiptPhotos: false, // デフォルトOFF: 解析後は写真破棄し家計簿データのみ保存（容量完全ゼロ）
+  scanMode: 'balanced' // 'balanced' | 'fast' | 'accurate'
 };
 
 /**
